@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "530859405178",
+    "project_id": "ramy-track-erp",
+    "storage_bucket": "ramy-track-erp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:530859405178:android:67cfda3e61900d5ffb70c3",
+        "android_client_info": {
+          "package_name": "com.ramytrack.ramy_track_erp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "530859405178-lnjhhfsthalb7d6cp6iinv727neitrct.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ramytrack.ramy_track_erp",
+            "certificate_hash": "fe20f7e769d216293f7c38f43bddbfc8a8f45db6"
+          }
+        },
+        {
+          "client_id": "530859405178-don9qbuej4tt0gfrc9lcndv191cim6rs.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVVL37CrW-7LgosX5D-aYoCeYWn_Q6SBk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "530859405178-don9qbuej4tt0gfrc9lcndv191cim6rs.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
