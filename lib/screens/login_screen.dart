@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'signup_screen.dart';
+import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _rememberMe = true;
+  String _currentLanguage = 'العربية'; // للتحكم في اللغة
 
   final LocalAuthentication auth = LocalAuthentication();
 
@@ -28,8 +30,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _loadSavedCredentials();
-    _initGoogleSignIn(); // تهيئة جوجل للنسخة الحديثة
+    _loadSavedData(); // دمجنا تحميل البيانات واللغة
+    _initGoogleSignIn();
 
     _pulseController = AnimationController(
       vsync: this,
@@ -41,7 +43,91 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  // دالة تهيئة جوجل
+  // قاموس الكلمات (عربي / إنجليزي)
+  String _getText(String key) {
+    final texts = {
+      'العربية': {
+        'subtitle': 'إدارة تتبع النقل والحسابات',
+        'welcome_back': 'مرحبًا بعودتك',
+        'email': 'البريد الإلكتروني',
+        'email_hint': 'أدخل بريدك الإلكتروني',
+        'password': 'كلمة المرور',
+        'password_hint': 'أدخل كلمة المرور',
+        'remember_me': 'تذكرني',
+        'forgot_password': 'نسيت كلمة المرور؟',
+        'login_btn': 'تسجيل الدخول',
+        'or': 'أو',
+        'fingerprint': 'الدخول بالبصمة',
+        'fingerprint_sub': 'للدخول السريع والأمن',
+        'google_btn': 'متابعة باستخدام Google',
+        'signup_btn': 'إنشاء حساب جديد',
+        'login_success': '✅ تم تسجيل الدخول بنجاح!',
+        'enter_credentials': '⚠️ برجاء إدخال البريد الإلكتروني وكلمة المرور أولاً',
+        'google_success': '✅ تم تسجيل الدخول بواسطة Google بنجاح!',
+        'google_fail': '❌ فشل تسجيل الدخول باستخدام Google',
+        'fingerprint_success': '✅ تم تسجيل الدخول بالبصمة بنجاح!',
+        'no_fingerprint': '❌ جهازك لا يدعم تسجيل الدخول بالبصمة',
+        'fingerprint_prompt': 'قم بوضع إصبعك على المستشعر لتسجيل الدخول',
+        'err_not_found': 'لا يوجد حساب مسجل بهذا البريد الإلكتروني',
+        'err_wrong_pass': 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
+        'err_invalid_email': 'صيغة البريد الإلكتروني غير صحيحة',
+        'err_unexpected': '❌ حدث خطأ غير متوقع، يرجى المحاولة لاحقاً',
+        'forgot_title': 'استعادة كلمة المرور',
+        'forgot_desc': 'أدخل بريدك الإلكتروني وسنرسل لك رابطاً لتعيين كلمة مرور جديدة.',
+        'cancel': 'إلغاء',
+        'send_link': 'إرسال الرابط',
+        'reset_success': '✅ تم إرسال رابط استعادة كلمة المرور إلى بريدك بنجاح.',
+        'reset_fail': '❌ حدث خطأ، تأكد من صحة البريد الإلكتروني.',
+      },
+      'English': {
+        'subtitle': 'Transport & Accounts Management',
+        'welcome_back': 'Welcome Back',
+        'email': 'Email Address',
+        'email_hint': 'Enter your email',
+        'password': 'Password',
+        'password_hint': 'Enter your password',
+        'remember_me': 'Remember me',
+        'forgot_password': 'Forgot password?',
+        'login_btn': 'Login',
+        'or': 'OR',
+        'fingerprint': 'Fingerprint Login',
+        'fingerprint_sub': 'For quick and secure access',
+        'google_btn': 'Continue with Google',
+        'signup_btn': 'Create New Account',
+        'login_success': '✅ Logged in successfully!',
+        'enter_credentials': '⚠️ Please enter email and password first',
+        'google_success': '✅ Logged in with Google successfully!',
+        'google_fail': '❌ Failed to login with Google',
+        'fingerprint_success': '✅ Fingerprint login successful!',
+        'no_fingerprint': '❌ Your device does not support fingerprint',
+        'fingerprint_prompt': 'Place your finger on the sensor to login',
+        'err_not_found': 'No account found for this email',
+        'err_wrong_pass': 'Incorrect email or password',
+        'err_invalid_email': 'Invalid email format',
+        'err_unexpected': '❌ An unexpected error occurred, try again later',
+        'forgot_title': 'Reset Password',
+        'forgot_desc': 'Enter your email and we will send a link to reset your password.',
+        'cancel': 'Cancel',
+        'send_link': 'Send Link',
+        'reset_success': '✅ Password reset link sent successfully.',
+        'reset_fail': '❌ Error occurred, check your email address.',
+      }
+    };
+    return texts[_currentLanguage]![key] ?? key;
+  }
+
+  // دالة تغيير اللغة وحفظها في الذاكرة
+  void _toggleLanguage() async {
+    setState(() {
+      _currentLanguage = _currentLanguage == 'العربية' ? 'English' : 'العربية';
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('app_language', _currentLanguage); // حفظ اللغة
+
+    _showCenteredSnackBar('تم تغيير اللغة إلى: $_currentLanguage', const Color(0xFF0072FF));
+  }
+
   Future<void> _initGoogleSignIn() async {
     try {
       await GoogleSignIn.instance.initialize();
@@ -58,8 +144,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
-  Future<void> _loadSavedCredentials() async {
+  // تحميل اللغة والباسورد المحفوظين
+  Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // تحميل اللغة
+    final savedLanguage = prefs.getString('app_language');
+    if (savedLanguage != null) {
+      setState(() {
+        _currentLanguage = savedLanguage;
+      });
+    }
+
+    // تحميل بيانات الدخول
     final savedEmail = prefs.getString('saved_email');
     final savedPassword = prefs.getString('saved_password');
 
@@ -78,6 +175,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   void _showCenteredSnackBar(String message, Color color) {
     if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -87,6 +185,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         ),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       ),
@@ -100,11 +199,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      _showCenteredSnackBar('⚠️ برجاء إدخال البريد الإلكتروني وكلمة المرور أولاً', Colors.orange);
+      _showCenteredSnackBar(_getText('enter_credentials'), Colors.orange);
       return;
     }
-
-    // تم إزالة رسالة "جاري تسجيل الدخول..." هنا بناءً على طلبك
 
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
@@ -118,41 +215,59 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         await prefs.remove('saved_password');
       }
 
-      _showCenteredSnackBar('✅ تم تسجيل الدخول بنجاح!', Colors.green);
+      _showCenteredSnackBar(_getText('login_success'), Colors.green);
+
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).clearSnackBars();
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const DashboardScreen()),
+      );
 
     } on FirebaseAuthException catch (e) {
-      String errorMessage = 'حدث خطأ أثناء تسجيل الدخول';
+      String errorMessage = _getText('err_unexpected');
       if (e.code == 'user-not-found') {
-        errorMessage = 'لا يوجد حساب مسجل بهذا البريد الإلكتروني';
+        errorMessage = _getText('err_not_found');
       } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        errorMessage = 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
+        errorMessage = _getText('err_wrong_pass');
       } else if (e.code == 'invalid-email') {
-        errorMessage = 'صيغة البريد الإلكتروني غير صحيحة';
+        errorMessage = _getText('err_invalid_email');
       }
       _showCenteredSnackBar('❌ $errorMessage', Colors.redAccent);
     } catch (e) {
-      _showCenteredSnackBar('❌ حدث خطأ غير متوقع، يرجى المحاولة لاحقاً', Colors.redAccent);
+      _showCenteredSnackBar(_getText('err_unexpected'), Colors.redAccent);
     }
   }
 
-  // --- دالة تسجيل الدخول بـ Google المحدثة والصحيحة 100% ---
   Future<void> _handleGoogleSignIn() async {
     try {
       final googleUser = await GoogleSignIn.instance.authenticate();
       if (googleUser == null) return;
 
       final googleAuth = await googleUser.authentication;
-
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-      );
+      final AuthCredential credential = GoogleAuthProvider.credential(idToken: googleAuth.idToken);
 
       await FirebaseAuth.instance.signInWithCredential(credential);
 
-      _showCenteredSnackBar('✅ تم تسجيل الدخول بواسطة Google بنجاح!', Colors.green);
+      _showCenteredSnackBar(_getText('google_success'), Colors.green);
+
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).clearSnackBars();
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const DashboardScreen()),
+      );
 
     } catch (e) {
-      _showCenteredSnackBar('❌ فشل تسجيل الدخول باستخدام Google', Colors.redAccent);
+      _showCenteredSnackBar(_getText('google_fail'), Colors.redAccent);
     }
   }
 
@@ -162,23 +277,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     showDialog(
       context: context,
       builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: _currentLanguage == 'العربية' ? TextDirection.rtl : TextDirection.ltr,
         child: AlertDialog(
           backgroundColor: const Color(0xFF0B172A),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: const BorderSide(color: Color(0xFF1E2D4A)),
           ),
-          title: const Text(
-            'استعادة كلمة المرور',
-            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          title: Text(
+            _getText('forgot_title'),
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'أدخل بريدك الإلكتروني وسنرسل لك رابطاً لتعيين كلمة مرور جديدة.',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+              Text(
+                _getText('forgot_desc'),
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
               const SizedBox(height: 15),
               SizedBox(
@@ -188,7 +303,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    hintText: 'البريد الإلكتروني',
+                    hintText: _getText('email'),
                     hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
                     filled: true,
                     fillColor: const Color(0xFF020B19),
@@ -209,7 +324,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء', style: TextStyle(color: Colors.white54)),
+              child: Text(_getText('cancel'), style: const TextStyle(color: Colors.white54)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -219,17 +334,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               onPressed: () async {
                 final email = resetEmailController.text.trim();
                 if (email.isEmpty) return;
-
                 Navigator.pop(context);
-
                 try {
                   await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-                  _showCenteredSnackBar('✅ تم إرسال رابط استعادة كلمة المرور إلى بريدك بنجاح.', Colors.green);
+                  _showCenteredSnackBar(_getText('reset_success'), Colors.green);
                 } catch (e) {
-                  _showCenteredSnackBar('❌ حدث خطأ، تأكد من صحة البريد الإلكتروني.', Colors.redAccent);
+                  _showCenteredSnackBar(_getText('reset_fail'), Colors.redAccent);
                 }
               },
-              child: const Text('إرسال الرابط', style: TextStyle(color: Colors.white)),
+              child: Text(_getText('send_link'), style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -243,21 +356,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
 
       if (!canAuthenticate) {
-        _showCenteredSnackBar('❌ جهازك لا يدعم تسجيل الدخول بالبصمة', Colors.redAccent);
+        _showCenteredSnackBar(_getText('no_fingerprint'), Colors.redAccent);
         return;
       }
 
       final bool didAuthenticate = await auth.authenticate(
-        localizedReason: 'قم بوضع إصبعك على المستشعر لتسجيل الدخول',
+        localizedReason: _getText('fingerprint_prompt'),
       );
 
       if (didAuthenticate) {
-        _showCenteredSnackBar('✅ تم تسجيل الدخول بالبصمة بنجاح!', Colors.green);
+        _showCenteredSnackBar(_getText('fingerprint_success'), Colors.green);
+
+        await Future.delayed(const Duration(milliseconds: 1500));
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).clearSnackBars();
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DashboardScreen()),
+        );
       }
     } on PlatformException catch (e) {
-      _showCenteredSnackBar('❌ كود الخطأ: ${e.code}', Colors.redAccent);
+      _showCenteredSnackBar('❌ ${e.code}', Colors.redAccent);
     } catch (e) {
-      _showCenteredSnackBar('❌ خطأ: ${e.toString()}', Colors.redAccent);
+      _showCenteredSnackBar('❌ ${e.toString()}', Colors.redAccent);
     }
   }
 
@@ -280,7 +404,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Directionality(
-          textDirection: TextDirection.rtl,
+          textDirection: _currentLanguage == 'العربية' ? TextDirection.rtl : TextDirection.ltr,
           child: SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             child: SizedBox(
@@ -306,6 +430,34 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       },
                     ),
                   ),
+
+                  Positioned(
+                    top: topPadding + 10,
+                    left: 20,
+                    child: InkWell(
+                      onTap: _toggleLanguage,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0B172A).withValues(alpha: 0.8),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF1E2D4A)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.language, color: Color(0xFF00D2FF), size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              _currentLanguage == 'العربية' ? 'English' : 'العربية',
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
                   Positioned(
                     top: topPadding + screenHeight * 0.21,
                     left: 20,
@@ -340,10 +492,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           ),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          'إدارة تتبع النقل والحسابات',
+                        Text(
+                          _getText('subtitle'),
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFFB0C4DE),
@@ -366,10 +518,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 ),
                               ),
                             ),
-                            const Text(
-                              'مرحبًا بعودتك',
+                            Text(
+                              _getText('welcome_back'),
                               textAlign: TextAlign.center,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 21,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
@@ -411,10 +563,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      children: const [
-                                        Icon(Icons.email_outlined, color: Color(0xFF00D2FF), size: 16),
-                                        SizedBox(width: 6),
-                                        Text('البريد الإلكتروني', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                      children: [
+                                        const Icon(Icons.email_outlined, color: Color(0xFF00D2FF), size: 16),
+                                        const SizedBox(width: 6),
+                                        Text(_getText('email'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                                       ],
                                     ),
                                     const SizedBox(height: 5),
@@ -425,7 +577,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                         style: const TextStyle(color: Colors.white, fontSize: 13),
                                         keyboardType: TextInputType.emailAddress,
                                         decoration: InputDecoration(
-                                          hintText: 'أدخل بريدك الإلكتروني',
+                                          hintText: _getText('email_hint'),
                                           hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
                                           filled: true,
                                           fillColor: const Color(0xFF0B172A).withValues(alpha: 0.85),
@@ -447,10 +599,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      children: const [
-                                        Icon(Icons.lock_outline, color: Color(0xFF00D2FF), size: 16),
-                                        SizedBox(width: 6),
-                                        Text('كلمة المرور', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                      children: [
+                                        const Icon(Icons.lock_outline, color: Color(0xFF00D2FF), size: 16),
+                                        const SizedBox(width: 6),
+                                        Text(_getText('password'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                                       ],
                                     ),
                                     const SizedBox(height: 5),
@@ -461,7 +613,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                         obscureText: !_isPasswordVisible,
                                         style: const TextStyle(color: Colors.white, fontSize: 13),
                                         decoration: InputDecoration(
-                                          hintText: 'أدخل كلمة المرور',
+                                          hintText: _getText('password_hint'),
                                           hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
                                           filled: true,
                                           fillColor: const Color(0xFF0B172A).withValues(alpha: 0.85),
@@ -512,14 +664,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                           ),
                                         ),
                                         const SizedBox(width: 6),
-                                        const Text('تذكرني', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                        Text(_getText('remember_me'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                                       ],
                                     ),
                                     GestureDetector(
                                       onTap: _showForgotPasswordDialog,
-                                      child: const Text(
-                                        'نسيت كلمة المرور؟',
-                                        style: TextStyle(color: Color(0xFF00D2FF), fontSize: 12),
+                                      child: Text(
+                                        _getText('forgot_password'),
+                                        style: const TextStyle(color: Color(0xFF00D2FF), fontSize: 12),
                                       ),
                                     ),
                                   ],
@@ -550,9 +702,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        const Text(
-                                          'تسجيل الدخول',
-                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                                        Text(
+                                          _getText('login_btn'),
+                                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
                                         ),
                                         const SizedBox(width: 10),
                                         Container(
@@ -561,20 +713,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                             border: Border.all(color: Colors.white70),
                                             borderRadius: BorderRadius.circular(5),
                                           ),
-                                          child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 14),
+                                          child: Icon(
+                                            _currentLanguage == 'العربية' ? Icons.arrow_forward_rounded : Icons.arrow_back_rounded,
+                                            color: Colors.white,
+                                            size: 14,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
                                 ),
                                 Row(
-                                  children: const [
-                                    Expanded(child: Divider(color: Colors.white12)),
+                                  children: [
+                                    const Expanded(child: Divider(color: Colors.white12)),
                                     Padding(
-                                      padding: EdgeInsets.symmetric(horizontal: 12.0),
-                                      child: Text('أو', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                      child: Text(_getText('or'), style: const TextStyle(color: Colors.white38, fontSize: 11)),
                                     ),
-                                    Expanded(child: Divider(color: Colors.white12)),
+                                    const Expanded(child: Divider(color: Colors.white12)),
                                   ],
                                 ),
                                 GestureDetector(
@@ -603,43 +759,38 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                         },
                                       ),
                                       const SizedBox(height: 5),
-                                      const Text('الدخول بالبصمة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                                      const Text('للدخول السريع والأمن', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                                      Text(_getText('fingerprint'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                      Text(_getText('fingerprint_sub'), style: const TextStyle(color: Colors.white38, fontSize: 10)),
                                     ],
                                   ),
                                 ),
                                 Row(
-                                  children: const [
-                                    Expanded(child: Divider(color: Colors.white12)),
+                                  children: [
+                                    const Expanded(child: Divider(color: Colors.white12)),
                                     Padding(
-                                      padding: EdgeInsets.symmetric(horizontal: 12.0),
-                                      child: Text('أو', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                      child: Text(_getText('or'), style: const TextStyle(color: Colors.white38, fontSize: 11)),
                                     ),
-                                    Expanded(child: Divider(color: Colors.white12)),
+                                    const Expanded(child: Divider(color: Colors.white12)),
                                   ],
                                 ),
-
-                                // --- تم استرجاع تصميم جوجل الشيك ---
-                                // --- تصميم جوجل الشيك بدون المستطيل الرمادي المزعج ---
                                 InkWell(
                                   onTap: _handleGoogleSignIn,
-                                  splashColor: Colors.transparent, // بيلغي لون الانفجار الرمادي
-                                  highlightColor: Colors.transparent, // بيلغي لون التظليل الرمادي
+                                  splashColor: Colors.transparent,
+                                  highlightColor: Colors.transparent,
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    children: const [
-                                      CustomGoogleLogo(size: 20),
-                                      SizedBox(width: 8),
+                                    children: [
+                                      const CustomGoogleLogo(size: 20),
+                                      const SizedBox(width: 8),
                                       Text(
-                                        'متابعة باستخدام Google',
-                                        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                                        _getText('google_btn'),
+                                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                                       ),
                                     ],
                                   ),
                                 ),
                                 const SizedBox(height: 10),
-                                // -------------------------------------
-
                                 Container(
                                   width: double.infinity,
                                   height: 40,
@@ -657,32 +808,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       );
                                     },
                                     icon: const Icon(Icons.person_add_alt_1_outlined, color: Color(0xFF00D2FF), size: 18),
-                                    label: const Text(
-                                      'إنشاء حساب جديد',
-                                      style: TextStyle(color: Color(0xFF00D2FF), fontSize: 13, fontWeight: FontWeight.bold),
+                                    label: Text(
+                                      _getText('signup_btn'),
+                                      style: const TextStyle(color: Color(0xFF00D2FF), fontSize: 13, fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                 ),
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF0B172A),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: Colors.white10),
-                                      ),
-                                      child: Row(
-                                        children: const [
-                                          Icon(Icons.language, color: Colors.white70, size: 14),
-                                          SizedBox(width: 4),
-                                          Text('العربية', style: TextStyle(color: Colors.white, fontSize: 11)),
-                                          Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 14),
-                                        ],
-                                      ),
-                                    ),
-                                    const Text(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Text(
                                       'Version 1.0.0',
                                       style: TextStyle(color: Colors.white38, fontSize: 11),
                                     ),
@@ -705,7 +840,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 }
 
-// --- كلاسات رسم لوجو جوجل (مهمة عشان اللوجو يظهر) ---
 class CustomGoogleLogo extends StatelessWidget {
   final double size;
   const CustomGoogleLogo({super.key, this.size = 24.0});

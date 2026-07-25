@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // تمت إضافة المكتبة لقراءة اللغة
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -17,8 +18,75 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
 
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
-
   bool _isLoading = false;
+
+  String _currentLanguage = 'العربية'; // اللغة الافتراضية لحد ما نقرأ الذاكرة
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLanguage(); // استدعاء اللغة المحفوظة بمجرد فتح الشاشة
+  }
+
+  // دالة قراءة اللغة من الذاكرة
+  Future<void> _loadLanguage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedLanguage = prefs.getString('app_language');
+    if (savedLanguage != null) {
+      setState(() {
+        _currentLanguage = savedLanguage;
+      });
+    }
+  }
+
+  // قاموس الكلمات لترجمة شاشة التسجيل
+  String _getText(String key) {
+    final texts = {
+      'العربية': {
+        'err_empty_fields': '⚠️ برجاء ملء جميع الحقول المطلوبة',
+        'err_pass_mismatch': '❌ كلمة المرور غير متطابقة مع تأكيد كلمة المرور',
+        'err_pass_length': '⚠️ كلمة المرور يجب ألا تقل عن 6 أحرف أو أرقام',
+        'signup_success': '✅ تم إنشاء الحساب بنجاح!',
+        'err_weak_pass': 'كلمة المرور ضعيفة جداً',
+        'err_email_in_use': 'البريد الإلكتروني مستخدم بالفعل لحساب آخر',
+        'err_invalid_email': 'صيغة البريد الإلكتروني غير صحيحة',
+        'err_unexpected': '❌ حدث خطأ غير متوقع، يرجى المحاولة لاحقاً',
+        'title_signup': 'حساب جديد',
+        'subtitle_signup': 'قم بانشاء حسابك للانضمام إلى Ramy Track ERP',
+        'email': 'البريد الإلكتروني',
+        'email_hint': 'أدخل بريدك الإلكتروني',
+        'password': 'كلمة المرور',
+        'password_hint': 'أدخل كلمة المرور (6 أحرف على الأقل)',
+        'confirm_password': 'تأكيد كلمة المرور',
+        'confirm_password_hint': 'أعد إدخال كلمة المرور',
+        'signup_btn': 'تسجيل الحساب',
+        'already_have_account': 'لديك حساب بالفعل؟ ',
+        'login_link': 'تسجيل الدخول',
+      },
+      'English': {
+        'err_empty_fields': '⚠️ Please fill in all required fields',
+        'err_pass_mismatch': '❌ Passwords do not match',
+        'err_pass_length': '⚠️ Password must be at least 6 characters',
+        'signup_success': '✅ Account created successfully!',
+        'err_weak_pass': 'Password is too weak',
+        'err_email_in_use': 'Email is already in use by another account',
+        'err_invalid_email': 'Invalid email format',
+        'err_unexpected': '❌ An unexpected error occurred, try again later',
+        'title_signup': 'New Account',
+        'subtitle_signup': 'Create your account to join Ramy Track ERP',
+        'email': 'Email Address',
+        'email_hint': 'Enter your email',
+        'password': 'Password',
+        'password_hint': 'Enter password (min 6 chars)',
+        'confirm_password': 'Confirm Password',
+        'confirm_password_hint': 'Re-enter your password',
+        'signup_btn': 'Sign Up',
+        'already_have_account': 'Already have an account? ',
+        'login_link': 'Login',
+      }
+    };
+    return texts[_currentLanguage]![key] ?? key;
+  }
 
   @override
   void dispose() {
@@ -56,17 +124,17 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
     final confirmPassword = _confirmPasswordController.text.trim();
 
     if (email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
-      _showCenteredSnackBar('⚠️ برجاء ملء جميع الحقول المطلوبة', Colors.orange, seconds: 2);
+      _showCenteredSnackBar(_getText('err_empty_fields'), Colors.orange, seconds: 2);
       return;
     }
 
     if (password != confirmPassword) {
-      _showCenteredSnackBar('❌ كلمة المرور غير متطابقة مع تأكيد كلمة المرور', Colors.redAccent, seconds: 2);
+      _showCenteredSnackBar(_getText('err_pass_mismatch'), Colors.redAccent, seconds: 2);
       return;
     }
 
     if (password.length < 6) {
-      _showCenteredSnackBar('⚠️ كلمة المرور يجب ألا تقل عن 6 أحرف أو أرقام', Colors.orange, seconds: 2);
+      _showCenteredSnackBar(_getText('err_pass_length'), Colors.orange, seconds: 2);
       return;
     }
 
@@ -80,18 +148,13 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
         password: password,
       );
 
-      // 1. إظهار رسالة النجاح لمدة ثانيتين
-      _showCenteredSnackBar('✅ تم إنشاء الحساب بنجاح!', Colors.green, seconds: 2);
+      _showCenteredSnackBar(_getText('signup_success'), Colors.green, seconds: 2);
 
-      // 2. الانتظار 2.5 ثانية (عشان الأنيميشن بتاع اختفاء الرسالة يلحق يخلص بالكامل على نفس الشاشة)
       await Future.delayed(const Duration(milliseconds: 2500));
 
       if (!mounted) return;
 
-      // 3. مسح أي شريط رسايل من الذاكرة تماماً عشان ميفضلش معلق في الشاشة الجديدة
       ScaffoldMessenger.of(context).clearSnackBars();
-
-      // 4. الرجوع لشاشة اللوجين بكل هدوء ونظافة
       Navigator.pop(context);
 
     } on FirebaseAuthException catch (e) {
@@ -99,20 +162,20 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
         _isLoading = false;
       });
 
-      String errorMessage = 'حدث خطأ أثناء إنشاء الحساب';
+      String errorMessage = _getText('err_unexpected');
       if (e.code == 'weak-password') {
-        errorMessage = 'كلمة المرور ضعيفة جداً';
+        errorMessage = _getText('err_weak_pass');
       } else if (e.code == 'email-already-in-use') {
-        errorMessage = 'البريد الإلكتروني مستخدم بالفعل لحساب آخر';
+        errorMessage = _getText('err_email_in_use');
       } else if (e.code == 'invalid-email') {
-        errorMessage = 'صيغة البريد الإلكتروني غير صحيحة';
+        errorMessage = _getText('err_invalid_email');
       }
       _showCenteredSnackBar('❌ $errorMessage', Colors.redAccent, seconds: 2);
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      _showCenteredSnackBar('❌ حدث خطأ غير متوقع، يرجى المحاولة لاحقاً', Colors.redAccent, seconds: 2);
+      _showCenteredSnackBar(_getText('err_unexpected'), Colors.redAccent, seconds: 2);
     }
   }
 
@@ -135,7 +198,8 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Directionality(
-          textDirection: TextDirection.rtl,
+          // ضبط الاتجاه بناءً على اللغة المقروءة من الذاكرة
+          textDirection: _currentLanguage == 'العربية' ? TextDirection.rtl : TextDirection.ltr,
           child: SingleChildScrollView(
             physics: const ClampingScrollPhysics(),
             child: SizedBox(
@@ -167,10 +231,10 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                     right: 20,
                     child: Column(
                       children: [
-                        const Text(
-                          'حساب جديد',
+                        Text(
+                          _getText('title_signup'),
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
@@ -182,10 +246,10 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                           ),
                         ),
                         const SizedBox(height: 6),
-                        const Text(
-                          'قم بانشاء حسابك للانضمام إلى Ramy Track ERP',
+                        Text(
+                          _getText('subtitle_signup'),
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFFB0C4DE),
@@ -209,10 +273,10 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      children: const [
-                                        Icon(Icons.email_outlined, color: Color(0xFF00D2FF), size: 16),
-                                        SizedBox(width: 6),
-                                        Text('البريد الإلكتروني', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                      children: [
+                                        const Icon(Icons.email_outlined, color: Color(0xFF00D2FF), size: 16),
+                                        const SizedBox(width: 6),
+                                        Text(_getText('email'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                                       ],
                                     ),
                                     const SizedBox(height: 5),
@@ -225,7 +289,7 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                                         keyboardType: TextInputType.emailAddress,
                                         textInputAction: TextInputAction.next,
                                         decoration: InputDecoration(
-                                          hintText: 'أدخل بريدك الإلكتروني',
+                                          hintText: _getText('email_hint'),
                                           hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
                                           filled: true,
                                           fillColor: const Color(0xFF0B172A).withValues(alpha: 0.85),
@@ -247,10 +311,10 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      children: const [
-                                        Icon(Icons.lock_outline, color: Color(0xFF00D2FF), size: 16),
-                                        SizedBox(width: 6),
-                                        Text('كلمة المرور', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                      children: [
+                                        const Icon(Icons.lock_outline, color: Color(0xFF00D2FF), size: 16),
+                                        const SizedBox(width: 6),
+                                        Text(_getText('password'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                                       ],
                                     ),
                                     const SizedBox(height: 5),
@@ -263,7 +327,7 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                                         style: const TextStyle(color: Colors.white, fontSize: 13),
                                         textInputAction: TextInputAction.next,
                                         decoration: InputDecoration(
-                                          hintText: 'أدخل كلمة المرور (6 أحرف على الأقل)',
+                                          hintText: _getText('password_hint'),
                                           hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
                                           filled: true,
                                           fillColor: const Color(0xFF0B172A).withValues(alpha: 0.85),
@@ -297,10 +361,10 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
-                                      children: const [
-                                        Icon(Icons.lock_reset, color: Color(0xFF00D2FF), size: 16),
-                                        SizedBox(width: 6),
-                                        Text('تأكيد كلمة المرور', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                      children: [
+                                        const Icon(Icons.lock_reset, color: Color(0xFF00D2FF), size: 16),
+                                        const SizedBox(width: 6),
+                                        Text(_getText('confirm_password'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                                       ],
                                     ),
                                     const SizedBox(height: 5),
@@ -314,7 +378,7 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                                         textInputAction: TextInputAction.done,
                                         onFieldSubmitted: (_) => _handleSignup(),
                                         decoration: InputDecoration(
-                                          hintText: 'أعد إدخال كلمة المرور',
+                                          hintText: _getText('confirm_password_hint'),
                                           hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
                                           filled: true,
                                           fillColor: const Color(0xFF0B172A).withValues(alpha: 0.85),
@@ -367,26 +431,26 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                                       shadowColor: Colors.transparent,
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                     ),
-                                    child: const Text(
-                                      'تسجيل الحساب',
-                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                                    child: Text(
+                                      _getText('signup_btn'),
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
                                     ),
                                   ),
                                 ),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Text(
-                                      'لديك حساب بالفعل؟ ',
-                                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                                    Text(
+                                      _getText('already_have_account'),
+                                      style: const TextStyle(color: Colors.white70, fontSize: 12),
                                     ),
                                     GestureDetector(
                                       onTap: () {
                                         if (!_isLoading) Navigator.pop(context);
                                       },
-                                      child: const Text(
-                                        'تسجيل الدخول',
-                                        style: TextStyle(
+                                      child: Text(
+                                        _getText('login_link'),
+                                        style: const TextStyle(
                                           color: Color(0xFF00D2FF),
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold,

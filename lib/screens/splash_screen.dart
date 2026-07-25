@@ -10,22 +10,38 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _glowController;
-  late Animation<double> _glowAnimation;
+  late AnimationController _beamController;
+  late Animation<double> _beamAnimation;
+
+  // ==========================================
+  // 🎯 التعديل الدقيق: النور يمين سنة، وتحت حاجة بسيطة جداً
+  // ==========================================
+  // الكشاف الأيسر (الأمامي)
+  final double leftLightTop = 0.360; // نزل تحت شعرة (كان 0.355)
+  final double leftLightLeft = 0.29; // رحل يمين سنة (كان 0.27)
+
+  // الكشاف الأيمن (الخلفي/الداخلي)
+  final double rightLightTop = 0.350; // نزل تحت شعرة (كان 0.345)
+  final double rightLightLeft = 0.39; // رحل يمين سنة (كان 0.37)
+
+  // درجة ميلان النور
+  final double beamAngle = -0.15;
+  // ==========================================
 
   @override
   void initState() {
     super.initState();
 
-    // إفكت إضاءة الخط المتحرك
-    _glowController = AnimationController(
+    _beamController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-
-    _glowAnimation = Tween<double>(begin: 0.1, end: 1.0).animate(
-      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
+      duration: const Duration(milliseconds: 1500),
     );
+
+    _beamAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _beamController, curve: Curves.easeOut),
+    );
+
+    _beamController.forward();
 
     // الانتقال لشاشة الدخول بعد 4 ثواني
     Future.delayed(const Duration(seconds: 4), () {
@@ -40,8 +56,51 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
-    _glowController.dispose();
+    _beamController.dispose();
     super.dispose();
+  }
+
+  Widget _buildLightBeam() {
+    return AnimatedBuilder(
+      animation: _beamAnimation,
+      builder: (context, child) {
+        return Transform.rotate(
+          angle: beamAngle,
+          alignment: Alignment.centerRight,
+          child: Transform.scale(
+            scaleX: _beamAnimation.value,
+            alignment: Alignment.centerRight,
+            child: Opacity(
+              opacity: _beamAnimation.value,
+              child: Container(
+                width: 90,
+                height: 5,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerRight,
+                    end: Alignment.centerLeft,
+                    colors: [
+                      Colors.white.withOpacity(0.9),
+                      const Color(0xFF00D2FF).withOpacity(0.6),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.3, 1.0],
+                  ),
+                  borderRadius: const BorderRadius.all(Radius.circular(10)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00D2FF).withOpacity(0.5),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -62,45 +121,59 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         height: size.height,
         child: Stack(
           children: [
-            // 1. صورتك الأصلية مفرودة بالكامل على الشاشة (بدون أي نصوص من عندي نهائياً)
+            // 1. الصورة
             Image.asset(
               'assets/images/Splash.png',
-              fit: BoxFit.cover, // بيفرد صورتك تملى الشاشة
+              fit: BoxFit.cover,
               width: size.width,
               height: size.height,
             ),
 
-            // 2. الخط المضيء المتحرك (فوق الصورة)
+            // 2. الكشافات بعد الضبط الدقيق
             Positioned(
-              // الرقم ده (0.54) بيحدد مكان الخط. لو محتاج ترفعه أو تنزله، غيره لـ 0.52 أو 0.56 مثلاً
+              top: size.height * leftLightTop,
+              right: size.width - (size.width * leftLightLeft),
+              child: _buildLightBeam(),
+            ),
+            Positioned(
+              top: size.height * rightLightTop,
+              right: size.width - (size.width * rightLightLeft),
+              child: _buildLightBeam(),
+            ),
+
+            // 3. الخط المضيء تحت الكلمة
+            Positioned(
               top: size.height * 0.54,
               left: 0,
               right: 0,
               child: Center(
                 child: AnimatedBuilder(
-                  animation: _glowAnimation,
+                  animation: _beamAnimation,
                   builder: (context, child) {
-                    return Container(
-                      height: 2.5,
-                      width: 250,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            const Color(0xFF00D2FF).withValues(alpha: _glowAnimation.value),
-                            Colors.white.withValues(alpha: _glowAnimation.value),
-                            const Color(0xFF00D2FF).withValues(alpha: _glowAnimation.value),
-                            Colors.transparent
-                          ],
-                          stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF00D2FF).withValues(alpha: _glowAnimation.value * 0.6),
-                            blurRadius: 10,
-                            spreadRadius: 2,
+                    return Opacity(
+                      opacity: _beamAnimation.value,
+                      child: Container(
+                        height: 2.5,
+                        width: 250,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.transparent,
+                              const Color(0xFF00D2FF).withOpacity(0.8),
+                              Colors.white,
+                              const Color(0xFF00D2FF).withOpacity(0.8),
+                              Colors.transparent
+                            ],
+                            stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
                           ),
-                        ],
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0xFF00D2FF),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -108,18 +181,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               ),
             ),
 
-            // 3. دائرة التحميل المتحركة (فوق الصورة)
+            // 4. اللودينج
             Positioned(
-              // الرقم ده (0.24) بيحدد مكان الدائرة من تحت. لو مش متسنترة غيره براحتك
               bottom: size.height * 0.24,
               left: 0,
               right: 0,
-              child: Center(
+              child: const Center(
                 child: SizedBox(
                   width: 45,
                   height: 45,
                   child: CircularProgressIndicator(
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00D2FF)),
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00D2FF)),
                     strokeWidth: 3.0,
                   ),
                 ),
