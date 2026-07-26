@@ -241,7 +241,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             children: [
               // ==========================================
-              // 1. قسم مرحباً بك (اللوجو المصغر والترانسبرنت في أقصى الشمال، والنصوص في اليمين)
+              // 1. قسم مرحباً بك (مضبوط بالمسطرة)
               // ==========================================
               Expanded(
                 flex: 14,
@@ -256,33 +256,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // الترانسبرنت مصغر وفي أقصى الشمال
+                        // اللوجو الشفاف تم تصغيره ووضعه أقصى الشمال داخل الإطار
                         Positioned(
-                          left: 5,
+                          left: -10, // مسحوب للشمال
                           child: Opacity(
-                            opacity: 0.15,
+                            opacity: 0.12, // شفافية ممتازة للووترمارك
                             child: Image.asset(
                               'assets/images/logo.png',
-                              width: 160,
+                              width: 170, // حجم مناسب جداً ولا يخرج عن الإطار
                               fit: BoxFit.contain,
                               errorBuilder: (context, error, stackTrace) => const SizedBox(),
                             ),
                           ),
                         ),
-                        // اللوجو مصغر وفي أقصى الشمال
+                        // اللوجو الأساسي مكبر قليلاً عن الأصلي ومسحوب للشمال
                         Positioned(
-                          left: 20,
+                          left: 10, // أقصى الشمال بمحاذاة مريحة للعين
                           child: Image.asset(
                             'assets/images/logo.png',
-                            width: 110,
+                            width: 125, // حجم أكبر من الأصلي وأصغر من النسخة اللي ضربت المساحة
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) => Image.asset('assets/images/Splash.png', width: 40),
                           ),
                         ),
-                        // النصوص على اليمين واخذة راحتها بالكامل
+                        // قسم النصوص والأفاتار
                         Positioned(
                           right: 15,
-                          left: 130, // مسافة أمان عشان ميتداخلش مع اللوجو الشمال
+                          left: 140, // إعطاء مساحة واسعة للنصوص لتجنب قص الكلمات
                           child: Row(
                             children: [
                               Stack(
@@ -306,18 +306,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Text(
-                                      'مرحباً بك في النظام',
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF103667)),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.visible,
+                                    // استخدام FittedBox لضمان عدم قص أي حرف من كلمة النظام مهما كانت الشاشة
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerRight,
+                                      child: const Text(
+                                        'مرحباً بك في النظام',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF103667)),
+                                      ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'اختر القسم المطلوب للمتابعة',
                                       style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                                       maxLines: 1,
-                                      overflow: TextOverflow.visible,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),
