@@ -20,7 +20,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final TextEditingController _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _rememberMe = true;
-  String _currentLanguage = 'العربية'; // للتحكم في اللغة
+  String _currentLanguage = 'العربية';
 
   final LocalAuthentication auth = LocalAuthentication();
 
@@ -30,8 +30,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _loadSavedData(); // دمجنا تحميل البيانات واللغة
-    _initGoogleSignIn();
+    _loadSavedData();
 
     _pulseController = AnimationController(
       vsync: this,
@@ -43,7 +42,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  // قاموس الكلمات (عربي / إنجليزي)
   String _getText(String key) {
     final texts = {
       'العربية': {
@@ -116,24 +114,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     return texts[_currentLanguage]![key] ?? key;
   }
 
-  // دالة تغيير اللغة وحفظها في الذاكرة
   void _toggleLanguage() async {
     setState(() {
       _currentLanguage = _currentLanguage == 'العربية' ? 'English' : 'العربية';
     });
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('app_language', _currentLanguage); // حفظ اللغة
+    await prefs.setString('app_language', _currentLanguage);
 
     _showCenteredSnackBar('تم تغيير اللغة إلى: $_currentLanguage', const Color(0xFF0072FF));
-  }
-
-  Future<void> _initGoogleSignIn() async {
-    try {
-      await GoogleSignIn.instance.initialize();
-    } catch (e) {
-      debugPrint('Google Sign-In initialization error: $e');
-    }
   }
 
   @override
@@ -144,11 +133,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
-  // تحميل اللغة والباسورد المحفوظين
   Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
-
-    // تحميل اللغة
     final savedLanguage = prefs.getString('app_language');
     if (savedLanguage != null) {
       setState(() {
@@ -156,7 +142,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       });
     }
 
-    // تحميل بيانات الدخول
     final savedEmail = prefs.getString('saved_email');
     final savedPassword = prefs.getString('saved_password');
 
@@ -181,11 +166,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         content: Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
         ),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+        duration: const Duration(seconds: 4),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       ),
@@ -216,18 +201,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
 
       _showCenteredSnackBar(_getText('login_success'), Colors.green);
-
       await Future.delayed(const Duration(milliseconds: 1500));
 
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).clearSnackBars();
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const DashboardScreen()),
       );
-
     } on FirebaseAuthException catch (e) {
       String errorMessage = _getText('err_unexpected');
       if (e.code == 'user-not-found') {
@@ -245,29 +227,37 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   Future<void> _handleGoogleSignIn() async {
     try {
-      final googleUser = await GoogleSignIn.instance.authenticate();
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+
+      if (await googleSignIn.isSignedIn()) {
+        await googleSignIn.signOut();
+      }
+
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return;
 
-      final googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(idToken: googleAuth.idToken);
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
 
       await FirebaseAuth.instance.signInWithCredential(credential);
 
       _showCenteredSnackBar(_getText('google_success'), Colors.green);
-
       await Future.delayed(const Duration(milliseconds: 1500));
 
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).clearSnackBars();
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const DashboardScreen()),
       );
-
     } catch (e) {
-      _showCenteredSnackBar(_getText('google_fail'), Colors.redAccent);
+      debugPrint('Google Sign-In Error: $e');
+      _showCenteredSnackBar('الخطأ: ${e.toString()}', Colors.redAccent);
     }
   }
 
@@ -366,11 +356,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
       if (didAuthenticate) {
         _showCenteredSnackBar(_getText('fingerprint_success'), Colors.green);
-
         await Future.delayed(const Duration(milliseconds: 1500));
 
         if (!mounted) return;
-
         ScaffoldMessenger.of(context).clearSnackBars();
 
         Navigator.pushReplacement(
