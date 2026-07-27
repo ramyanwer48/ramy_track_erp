@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
-import 'package:firebase_auth/firebase_auth.dart'; // تمت إضافة مكتبة فايربيس
+import 'package:firebase_auth/firebase_auth.dart';
 import 'daily_entry_screen.dart';
+import 'client_accounts_screen.dart'; // تم استيراد شاشة حسابات العملاء
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -12,7 +13,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
-
   DateTime _selectedDate = DateTime.now();
 
   String _getArabicDay(int weekday) {
@@ -39,7 +39,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Icon(Icons.notifications, color: Color(0xFF00D2FF)),
               SizedBox(width: 8),
-              Text('الإشعارات', style: TextStyle(color: Colors.white, fontSize: 16)),
+              Text('الإشعارات', style: TextStyle(color: Colors.white, fontSize: 16, fontFamily: 'Cairo')),
             ],
           ),
           content: const Column(
@@ -47,21 +47,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               ListTile(
                 leading: Icon(Icons.check_circle, color: Colors.green),
-                title: Text('تم حفظ بيان اليوم بنجاح', style: TextStyle(color: Colors.white, fontSize: 13)),
-                subtitle: Text('منذ 10 دقائق', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                title: Text('تم حفظ بيان اليوم بنجاح', style: TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Cairo')),
+                subtitle: Text('منذ 10 دقائق', style: TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Cairo')),
               ),
               Divider(color: Colors.white24),
               ListTile(
                 leading: Icon(Icons.info, color: Color(0xFF00D2FF)),
-                title: Text('تحديث جديد لبيانات السائقين', style: TextStyle(color: Colors.white, fontSize: 13)),
-                subtitle: Text('منذ ساعة', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                title: Text('تحديث جديد لبيانات السائقين', style: TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Cairo')),
+                subtitle: Text('منذ ساعة', style: TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Cairo')),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إغلاق', style: TextStyle(color: Color(0xFF00D2FF))),
+              child: const Text('إغلاق', style: TextStyle(color: Color(0xFF00D2FF), fontFamily: 'Cairo')),
             ),
           ],
         ),
@@ -132,7 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                   ),
-                  const Text('نظام إدارة النقل والحسابات', style: TextStyle(color: Colors.white70, fontSize: 9)),
+                  const Text('نظام إدارة النقل والحسابات', style: TextStyle(color: Colors.white70, fontSize: 9, fontFamily: 'Cairo')),
                 ],
               ),
               const SizedBox(width: 6),
@@ -164,7 +164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           Text(
                               _getArabicDay(_selectedDate.weekday),
-                              style: const TextStyle(color: Colors.white70, fontSize: 7)
+                              style: const TextStyle(color: Colors.white70, fontSize: 7, fontFamily: 'Cairo')
                           ),
                         ],
                       ),
@@ -202,7 +202,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // جلب بيانات المستخدم المسجل دخوله حالياً
     final User? currentUser = FirebaseAuth.instance.currentUser;
 
     return Directionality(
@@ -217,33 +216,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               UserAccountsDrawerHeader(
                 decoration: const BoxDecoration(color: Color(0xFF0A2540)),
-                // عرض اسم المستخدم من فايربيس أو نص افتراضي
-                accountName: Text(currentUser?.displayName ?? 'مسؤول النظام', style: const TextStyle(fontWeight: FontWeight.bold)),
-                // عرض إيميل المستخدم من فايربيس أو نص افتراضي
+                accountName: Text(currentUser?.displayName ?? 'مسؤول النظام', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
                 accountEmail: Text(currentUser?.email ?? 'admin@ramytrack.com'),
                 currentAccountPicture: CircleAvatar(
                   backgroundColor: Colors.white,
-                  // عرض الصورة لو موجودة، ولو مش موجودة يعرض أيقونة
                   backgroundImage: currentUser?.photoURL != null ? NetworkImage(currentUser!.photoURL!) : null,
                   child: currentUser?.photoURL == null ? const Icon(Icons.person, size: 40, color: Color(0xFF103667)) : null,
                 ),
               ),
               ListTile(
                 leading: const Icon(Icons.home, color: Colors.white),
-                title: const Text('الرئيسية', style: TextStyle(color: Colors.white)),
+                title: const Text('الرئيسية', style: TextStyle(color: Colors.white, fontFamily: 'Cairo')),
                 onTap: () => Navigator.pop(context),
               ),
               ListTile(
                 leading: const Icon(Icons.edit_document, color: Colors.white),
-                title: const Text('إدخال البيان اليومي', style: TextStyle(color: Colors.white)),
+                title: const Text('إدخال البيان اليومي', style: TextStyle(color: Colors.white, fontFamily: 'Cairo')),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const DailyEntryScreen()));
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.people_outline, color: Colors.white),
+                title: const Text('حسابات العملاء', style: TextStyle(color: Colors.white, fontFamily: 'Cairo')),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const ClientAccountsScreen()));
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.settings, color: Colors.white),
-                title: const Text('الإعدادات', style: TextStyle(color: Colors.white)),
+                title: const Text('الإعدادات', style: TextStyle(color: Colors.white, fontFamily: 'Cairo')),
                 onTap: () => Navigator.pop(context),
               ),
             ],
@@ -259,7 +263,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildNavItem(Icons.home, 'الرئيسية', 0, () => setState(() => _currentIndex = 0)),
-              _buildNavItem(Icons.people_outline, 'العملاء', 1, () => setState(() => _currentIndex = 1)),
+              _buildNavItem(Icons.people_outline, 'العملاء', 1, () {
+                setState(() => _currentIndex = 1);
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const ClientAccountsScreen()));
+              }),
               _buildNavItem(Icons.domain, 'المكتب', 2, () => setState(() => _currentIndex = 2)),
               _buildNavItem(Icons.engineering, 'السائقين', 3, () => setState(() => _currentIndex = 3)),
               _buildNavItem(Icons.edit_document, 'إدخال البيان', 4, () {
@@ -320,7 +327,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               Stack(
                                 alignment: Alignment.bottomRight,
                                 children: [
-                                  // التعديل هنا: جلب الصورة من حساب جوجل
                                   CircleAvatar(
                                     radius: 20,
                                     backgroundColor: Colors.blue.shade50,
@@ -332,7 +338,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(2),
                                     decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                    child: const CircleAvatar(radius: 5, backgroundColor: Colors.green), // النقطة الخضراء (أونلاين)
+                                    child: const CircleAvatar(radius: 5, backgroundColor: Colors.green),
                                   ),
                                 ],
                               ),
@@ -347,13 +353,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       alignment: Alignment.centerRight,
                                       child: const Text(
                                         'مرحباً بك في النظام',
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF103667)),
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF103667), fontFamily: 'Cairo'),
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'اختر القسم المطلوب للمتابعة',
-                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontFamily: 'Cairo'),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -405,8 +411,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                FittedBox(fit: BoxFit.scaleDown, child: Text('إدخال البيان بالذكاء الاصطناعي', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold))),
-                                FittedBox(fit: BoxFit.scaleDown, child: Text('تصوير البيان اليدوي وتفريغه تلقائياً', style: TextStyle(color: Colors.white70, fontSize: 10))),
+                                FittedBox(fit: BoxFit.scaleDown, child: Text('إدخال البيان بالذكاء الاصطناعي', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'Cairo'))),
+                                FittedBox(fit: BoxFit.scaleDown, child: Text('تصوير البيان اليدوي وتفريغه تلقائياً', style: TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Cairo'))),
                               ],
                             ),
                           ),
@@ -442,7 +448,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Expanded(
                         child: Row(
                           children: [
-                            _buildGridCard(context, title: 'حسابات العملاء', icon: Icons.people_outline, color: Colors.purple, onTap: () {}),
+                            // ربط كارت حسابات العملاء بالشاشة الجديدة
+                            _buildGridCard(context, title: 'حسابات العملاء', icon: Icons.people_outline, color: Colors.purple, onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const ClientAccountsScreen()));
+                            }),
                             _buildGridCard(context, title: 'حسابات السائقين', icon: Icons.engineering, color: Colors.teal, onTap: () {}),
                             _buildGridCard(context, title: 'حسابات المكتب', icon: Icons.domain, color: Colors.blue.shade700, onTap: () {}),
                           ],
@@ -499,7 +508,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 fit: BoxFit.scaleDown,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                  child: Text(title, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+                  child: Text(title, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
                 ),
               ),
             ],
@@ -531,6 +540,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: isSelected ? const Color(0xFF00D2FF) : Colors.white,
                   fontSize: 10,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontFamily: 'Cairo',
                 ),
               ),
             ),
