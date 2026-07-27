@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'package:firebase_auth/firebase_auth.dart'; // تمت إضافة مكتبة فايربيس
 import 'daily_entry_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -11,6 +12,21 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
+
+  DateTime _selectedDate = DateTime.now();
+
+  String _getArabicDay(int weekday) {
+    switch (weekday) {
+      case 1: return 'الإثنين';
+      case 2: return 'الثلاثاء';
+      case 3: return 'الأربعاء';
+      case 4: return 'الخميس';
+      case 5: return 'الجمعة';
+      case 6: return 'السبت';
+      case 7: return 'الأحد';
+      default: return '';
+    }
+  }
 
   void _showNotificationsDialog(BuildContext context) {
     showDialog(
@@ -54,9 +70,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
-    await showDatePicker(
+    final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: _selectedDate,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
       builder: (context, child) {
@@ -73,6 +89,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       },
     );
+
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
@@ -129,15 +151,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
-                    children: const [
-                      Icon(Icons.calendar_month, color: Colors.white, size: 12),
-                      SizedBox(width: 4),
+                    children: [
+                      const Icon(Icons.calendar_month, color: Colors.white, size: 12),
+                      const SizedBox(width: 4),
                       Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('16/07/2025', style: TextStyle(color: Colors.white, fontSize: 8)),
-                          Text('الخميس', style: TextStyle(color: Colors.white70, fontSize: 7)),
+                          Text(
+                              '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
+                              style: const TextStyle(color: Colors.white, fontSize: 8)
+                          ),
+                          Text(
+                              _getArabicDay(_selectedDate.weekday),
+                              style: const TextStyle(color: Colors.white70, fontSize: 7)
+                          ),
                         ],
                       ),
                     ],
@@ -174,6 +202,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // جلب بيانات المستخدم المسجل دخوله حالياً
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -184,13 +215,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              const UserAccountsDrawerHeader(
-                decoration: BoxDecoration(color: Color(0xFF0A2540)),
-                accountName: Text('مسؤول النظام', style: TextStyle(fontWeight: FontWeight.bold)),
-                accountEmail: Text('admin@ramytrack.com'),
+              UserAccountsDrawerHeader(
+                decoration: const BoxDecoration(color: Color(0xFF0A2540)),
+                // عرض اسم المستخدم من فايربيس أو نص افتراضي
+                accountName: Text(currentUser?.displayName ?? 'مسؤول النظام', style: const TextStyle(fontWeight: FontWeight.bold)),
+                // عرض إيميل المستخدم من فايربيس أو نص افتراضي
+                accountEmail: Text(currentUser?.email ?? 'admin@ramytrack.com'),
                 currentAccountPicture: CircleAvatar(
                   backgroundColor: Colors.white,
-                  child: Icon(Icons.person, size: 40, color: Color(0xFF103667)),
+                  // عرض الصورة لو موجودة، ولو مش موجودة يعرض أيقونة
+                  backgroundImage: currentUser?.photoURL != null ? NetworkImage(currentUser!.photoURL!) : null,
+                  child: currentUser?.photoURL == null ? const Icon(Icons.person, size: 40, color: Color(0xFF103667)) : null,
                 ),
               ),
               ListTile(
@@ -241,7 +276,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             children: [
               // ==========================================
-              // 1. قسم مرحباً بك (مضبوط بالمسطرة)
+              // 1. قسم مرحباً بك
               // ==========================================
               Expanded(
                 flex: 14,
@@ -256,47 +291,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // اللوجو الشفاف تم تصغيره ووضعه أقصى الشمال داخل الإطار
                         Positioned(
-                          left: -10, // مسحوب للشمال
+                          left: -10,
                           child: Opacity(
-                            opacity: 0.12, // شفافية ممتازة للووترمارك
+                            opacity: 0.12,
                             child: Image.asset(
                               'assets/images/logo.png',
-                              width: 170, // حجم مناسب جداً ولا يخرج عن الإطار
+                              width: 170,
                               fit: BoxFit.contain,
                               errorBuilder: (context, error, stackTrace) => const SizedBox(),
                             ),
                           ),
                         ),
-                        // اللوجو الأساسي مكبر قليلاً عن الأصلي ومسحوب للشمال
                         Positioned(
-                          left: 10, // أقصى الشمال بمحاذاة مريحة للعين
+                          left: 10,
                           child: Image.asset(
                             'assets/images/logo.png',
-                            width: 125, // حجم أكبر من الأصلي وأصغر من النسخة اللي ضربت المساحة
+                            width: 125,
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) => Image.asset('assets/images/Splash.png', width: 40),
                           ),
                         ),
-                        // قسم النصوص والأفاتار
                         Positioned(
                           right: 15,
-                          left: 140, // إعطاء مساحة واسعة للنصوص لتجنب قص الكلمات
+                          left: 140,
                           child: Row(
                             children: [
                               Stack(
                                 alignment: Alignment.bottomRight,
                                 children: [
+                                  // التعديل هنا: جلب الصورة من حساب جوجل
                                   CircleAvatar(
                                     radius: 20,
                                     backgroundColor: Colors.blue.shade50,
-                                    child: Icon(Icons.person, size: 24, color: Colors.blue.shade300),
+                                    backgroundImage: currentUser?.photoURL != null ? NetworkImage(currentUser!.photoURL!) : null,
+                                    child: currentUser?.photoURL == null
+                                        ? Icon(Icons.person, size: 24, color: Colors.blue.shade300)
+                                        : null,
                                   ),
                                   Container(
                                     padding: const EdgeInsets.all(2),
                                     decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                    child: const CircleAvatar(radius: 5, backgroundColor: Colors.green),
+                                    child: const CircleAvatar(radius: 5, backgroundColor: Colors.green), // النقطة الخضراء (أونلاين)
                                   ),
                                 ],
                               ),
@@ -306,7 +342,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    // استخدام FittedBox لضمان عدم قص أي حرف من كلمة النظام مهما كانت الشاشة
                                     FittedBox(
                                       fit: BoxFit.scaleDown,
                                       alignment: Alignment.centerRight,

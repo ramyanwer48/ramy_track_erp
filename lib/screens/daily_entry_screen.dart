@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class DailyEntryScreen extends StatefulWidget {
   const DailyEntryScreen({super.key});
@@ -8,199 +9,1079 @@ class DailyEntryScreen extends StatefulWidget {
 }
 
 class _DailyEntryScreenState extends State<DailyEntryScreen> {
-  // متغير للتحكم في اختيار الموقع (0 للقديم، 1 للجديد)
-  int selectedLocation = 1;
+  // 1. المتغيرات الأساسية
+  String _selectedSite = 'old';
+  DateTime _selectedDate = DateTime.now();
+  final bool _isArabic = true;
+  bool _isLoading = false;
+  String? _currentDocId;
 
-  @override
-  Widget build(BuildContext context) {
-    return Directionality(
+  // تحكم في فتح الكيبورد وحماية البيانات (وضع القراءة فقط)
+  bool _vehicleSearchActive = false;
+  bool _isReadOnly = false;
+  int _vehicleKeyCounter = 0;
+
+  final List<Map<String, dynamic>> _clientTrips = [];
+
+  // ==========================================
+  // قاعدة بيانات المركبات
+  // ==========================================
+  final List<Map<String, dynamic>> _vehiclesDB = [
+    {'number': '6734', 'name': 'سيد ثروت', 'typeCode': 'Z', 'cubage': 19.0},
+    {'number': '5361', 'name': 'محمود ثروت', 'typeCode': 'Z', 'cubage': 19.0},
+    {'number': '7391', 'name': 'سيد حمدي', 'typeCode': 'Z', 'cubage': 20.0},
+    {'number': '9728', 'name': 'مصطفى ثروت', 'typeCode': 'Z', 'cubage': 20.0},
+    {'number': '7718', 'name': 'سيد فرداني', 'typeCode': 'Z', 'cubage': 14.0},
+    {'number': '2461', 'name': 'صبحي السيد', 'typeCode': 'Z', 'cubage': 19.0},
+    {'number': '4129', 'name': 'علي', 'typeCode': 'Z', 'cubage': 20.0},
+    {'number': '2365', 'name': 'محمود جميل', 'typeCode': 'Z', 'cubage': 19.0},
+    {'number': '6534', 'name': 'محمد صلاح', 'typeCode': 'Z', 'cubage': 18.5},
+    {'number': '6547', 'name': 'محمد', 'typeCode': 'Z', 'cubage': 18.5},
+    {'number': '6147', 'name': 'سعيد', 'typeCode': 'Z', 'cubage': 18.0},
+
+    {'number': '239', 'name': 'محمد', 'typeCode': 'M', 'cubage': 12.0},
+    {'number': '1918', 'name': 'أدهم السوري', 'typeCode': 'M', 'cubage': 20.0},
+    {'number': '5482', 'name': 'تحسين وش', 'typeCode': 'M', 'cubage': 20.0},
+    {'number': '6439', 'name': 'إسماعيل', 'typeCode': 'M', 'cubage': 20.0},
+    {'number': '1543', 'name': 'أبو لويفي', 'typeCode': 'M', 'cubage': 20.0},
+
+    {'number': '5482 - 1478', 'name': 'تحسين', 'typeCode': 'M', 'cubage': 53.0},
+    {'number': '1853 - 222', 'name': 'أبو شريف', 'typeCode': 'M', 'cubage': 51.0},
+    {'number': '5375 - 333', 'name': 'سعيد', 'typeCode': 'M', 'cubage': 56.0},
+    {'number': '2919 - 111', 'name': 'محمد', 'typeCode': 'M', 'cubage': 54.0},
+  ];
+
+  // ==========================================
+  // قاعدة بيانات العملاء
+  // ==========================================
+  final List<String> _oldSiteClients = [
+    'أحمد سعد', 'الأقصي', 'الرجاء (3)', 'العماد', 'شركة السلام', 'جنيدي',
+    'شركة طلعت مصطفي', 'شركة مصر التشييد والبناء', 'شركة الغريب', 'محمود صابر',
+    'معتمد', 'وطنية المدرسة', 'شركة الغريب (بون رسمي)', 'سامكريت (خط المواسير)',
+    'الرجاء (1-2)', 'خلاطة مصر التشييد والبناء', 'خلاطة أبراج', 'خلاطة السلام'
+  ];
+  final List<String> _newSiteClients = ['بخيت', 'عادل'];
+
+  String? _selectedVehicleNumber;
+  String _driverName = '---';
+  String _driverType = '---';
+  String _typeCode = '';
+  double _cubage = 0.0;
+  bool _isTractor = false;
+
+  // ================= رسالة تنبيه الحماية =================
+  void _handleReadOnlyTap() {
+    if (_isReadOnly) {
+      _showMessage(_isArabic ? 'البيان محمي. اضغط على "تعديل البيان" بالأسفل لتتمكن من التعديل.' : 'Entry locked. Click Edit below.', Colors.orange);
+    }
+  }
+
+  // ================= دوال التاريخ وتحويل الأرقام =================
+  String _toArabicNumbers(String text) {
+    if (!_isArabic) return text;
+    const english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    const arabic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    for (int i = 0; i < english.length; i++) {
+      text = text.replaceAll(english[i], arabic[i]);
+    }
+    return text;
+  }
+
+  Widget _buildFormattedDate() {
+    String day = _selectedDate.day.toString().padLeft(2, '0');
+    String month = _selectedDate.month.toString().padLeft(2, '0');
+    String year = _selectedDate.year.toString();
+
+    if (_isArabic) {
+      day = _toArabicNumbers(day);
+      month = _toArabicNumbers(month);
+      year = _toArabicNumbers(year);
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA), // لون الخلفية الفاتح
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF0A182E), // اللون الكحلي للهيدر
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
-          centerTitle: true,
-          title: const Text(
-            'البيان اليومي',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          actions: [
-            TextButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.save, color: Colors.white, size: 20),
-              label: const Text('حفظ', style: TextStyle(color: Colors.white, fontSize: 14)),
-            ),
-          ],
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
+      children: [
+        Text(day, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 15, fontWeight: FontWeight.bold)),
+        const Text('/', style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 15, fontWeight: FontWeight.bold)),
+        Text(month, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 15, fontWeight: FontWeight.bold)),
+        const Text('/', style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 15, fontWeight: FontWeight.bold)),
+        Text(year, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 15, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFF0F2A52))),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  void _changeSite(String site) {
+    if (_selectedSite != site) {
+      setState(() {
+        _selectedSite = site;
+        _clientTrips.clear();
+        _clearVehicle();
+        _currentDocId = null;
+        _isReadOnly = false;
+      });
+    }
+  }
+
+  void _onVehicleSelected(String? numberStr) {
+    if (numberStr == null || numberStr.isEmpty) return;
+    try {
+      final vehicle = _vehiclesDB.firstWhere((v) => _toArabicNumbers(v['number']) == numberStr || v['number'] == numberStr);
+      setState(() {
+        _selectedVehicleNumber = _toArabicNumbers(vehicle['number']);
+        _driverName = vehicle['name'];
+        _cubage = vehicle['cubage'];
+        _typeCode = vehicle['typeCode'];
+        _isTractor = vehicle['number'].contains('-');
+
+        if (_typeCode == 'Z') {
+          _driverType = _isArabic ? 'سائق شركة (Z)' : 'Company (Z)';
+        } else if (_typeCode == 'M') {
+          _driverType = _isArabic ? 'سائق محجر (M)' : 'Quarry (M)';
+        }
+      });
+    } catch (e) {
+      // تجاهل
+    }
+  }
+
+  void _clearVehicle() {
+    setState(() {
+      _selectedVehicleNumber = null;
+      _driverName = '---';
+      _driverType = '---';
+      _typeCode = '';
+      _cubage = 0.0;
+      _isTractor = false;
+      _vehicleSearchActive = false;
+      _vehicleKeyCounter++;
+    });
+  }
+
+  void _addClientTrip() {
+    setState(() {
+      _clientTrips.add({'client': null, 'trips': 1, 'searchActive': false});
+    });
+  }
+
+  String _formatCubage(double val) {
+    String result = val == 0.0 ? '0' : (val % 1 == 0 ? val.toInt().toString() : val.toString());
+    return _toArabicNumbers(result);
+  }
+
+  // ================= دوال استدعاء وتعديل البيانات =================
+  Future<void> _showDailyRecords() async {
+    String queryDate = '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.5,
+          padding: const EdgeInsets.all(15.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. اختيار الموقع
-              const Center(
-                child: Text('اختر الموقع', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0A182E))),
+              Text(
+                _isArabic ? 'سجل يوم (${_buildFormattedDateText()}) - الموقع ${_selectedSite == 'old' ? 'القديم' : 'الجديد'}'
+                    : 'Records for $queryDate',
+                style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildLocationToggle(
-                      title: 'الموقع الجديد',
-                      icon: Icons.business,
-                      isSelected: selectedLocation == 1,
-                      onTap: () => setState(() => selectedLocation = 1),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildLocationToggle(
-                      title: 'الموقع القديم',
-                      icon: Icons.domain,
-                      isSelected: selectedLocation == 0,
-                      onTap: () => setState(() => selectedLocation = 0),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
+              const Divider(),
+              Expanded(
+                child: FutureBuilder<QuerySnapshot>(
+                  future: FirebaseFirestore.instance.collection('daily_entries')
+                      .where('site', isEqualTo: _selectedSite)
+                      .where('dateString', isEqualTo: queryDate)
+                      .get(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52)));
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return Center(
+                        child: Text(_isArabic ? 'لا توجد بيانات مسجلة في هذا الموقع اليوم' : 'No records found for this site today.',
+                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 14, color: Colors.grey)),
+                      );
+                    }
 
-              // 2. التاريخ
-              _buildSectionContainer(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Icon(Icons.calendar_month, color: Color(0xFF0A182E)),
-                    const Text('الخميس 16/07/2025', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                    Text('التاريخ', style: TextStyle(fontSize: 14, color: Colors.blue[800], fontWeight: FontWeight.bold)),
-                  ],
+                    return ListView.builder(
+                      itemCount: snapshot.data!.docs.length,
+                      itemBuilder: (context, index) {
+                        var doc = snapshot.data!.docs[index];
+                        var data = doc.data() as Map<String, dynamic>;
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          elevation: 2,
+                          child: ListTile(
+                            leading: Icon(data['isTractor'] == true ? Icons.local_shipping : Icons.airport_shuttle, color: const Color(0xFF4A78B9)),
+                            title: Text('${_isArabic ? "مركبة:" : "Vehicle:"} ${data['vehicleNumber']}', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                            subtitle: Text('${data['driverName']} - ${data['clientsTrips']?.length ?? 0} عملاء', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                            onTap: () => _loadEntry(doc),
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
               ),
-              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
-              // 3. بيانات الإدخال
-              const Text('بيانات الإدخال', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0066FF))),
-              const SizedBox(height: 10),
-              _buildSectionContainer(
-                child: Column(
+  String _buildFormattedDateText() {
+    String day = _selectedDate.day.toString().padLeft(2, '0');
+    String month = _selectedDate.month.toString().padLeft(2, '0');
+    String year = _selectedDate.year.toString();
+    return _isArabic ? '${_toArabicNumbers(day)}/${_toArabicNumbers(month)}/${_toArabicNumbers(year)}' : '$day/$month/$year';
+  }
+
+  void _loadEntry(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    setState(() {
+      _currentDocId = doc.id;
+      _selectedVehicleNumber = data['vehicleNumber'];
+      _driverName = data['driverName'] ?? '---';
+      _typeCode = data['typeCode'] ?? '';
+      _cubage = (data['cubage'] ?? 0.0).toDouble();
+      _isTractor = data['isTractor'] ?? false;
+
+      _vehicleKeyCounter++;
+      _isReadOnly = true;
+
+      if (_typeCode == 'Z') {
+        _driverType = _isArabic ? 'سائق شركة (Z)' : 'Company (Z)';
+      } else if (_typeCode == 'M') {
+        _driverType = _isArabic ? 'سائق محجر (M)' : 'Quarry (M)';
+      } else {
+        _driverType = '---';
+      }
+
+      _clientTrips.clear();
+      List<dynamic> trips = data['clientsTrips'] ?? [];
+      for (var t in trips) {
+        _clientTrips.add({
+          'client': t['clientName'],
+          'trips': t['tripsCount'],
+          'searchActive': false,
+        });
+      }
+    });
+    Navigator.pop(context);
+  }
+
+  // ================= دوال الحفظ والحذف =================
+  Future<void> _saveEntry() async {
+    if (_selectedVehicleNumber == null) {
+      _showMessage(_isArabic ? 'برجاء اختيار المركبة أولاً' : 'Select vehicle first', Colors.red);
+      return;
+    }
+    if (_clientTrips.isEmpty) {
+      _showMessage(_isArabic ? 'برجاء إضافة عميل واحد على الأقل' : 'Add at least one client', Colors.red);
+      return;
+    }
+    if (_clientTrips.any((trip) => trip['client'] == null || trip['client'].toString().isEmpty)) {
+      _showMessage(_isArabic ? 'برجاء اختيار أسماء جميع العملاء في الجدول' : 'Select all client names', Colors.red);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final entryData = {
+        'date': Timestamp.fromDate(_selectedDate),
+        'dateString': '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
+        'site': _selectedSite,
+        'vehicleNumber': _selectedVehicleNumber,
+        'driverName': _driverName,
+        'typeCode': _typeCode,
+        'cubage': _cubage,
+        'isTractor': _isTractor,
+        'clientsTrips': _clientTrips.map((t) => {
+          'clientName': t['client'],
+          'tripsCount': t['trips'],
+          'totalCubage': t['trips'] * _cubage,
+        }).toList(),
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      bool isUpdate = _currentDocId != null;
+
+      if (!isUpdate) {
+        DocumentReference docRef = await FirebaseFirestore.instance.collection('daily_entries').add(entryData);
+        setState(() => _currentDocId = docRef.id);
+      } else {
+        await FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).update(entryData);
+      }
+
+      setState(() {
+        _isLoading = false;
+        _isReadOnly = true;
+      });
+
+      if (isUpdate) {
+        _showMessage(_isArabic ? 'تم تعديل وحفظ البيان بنجاح' : 'Entry updated and saved successfully', const Color(0xFF28A745));
+      } else {
+        _showMessage(_isArabic ? 'تم حفظ البيان بنجاح!' : 'Entry Saved!', const Color(0xFF28A745));
+      }
+
+    } catch (e) {
+      setState(() => _isLoading = false);
+      _showMessage('Error: $e', Colors.red);
+    }
+  }
+
+  Future<void> _deleteEntry() async {
+    if (_currentDocId == null) return;
+    bool confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_isArabic ? 'تأكيد الحذف' : 'Confirm Delete', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontFamily: 'Cairo')),
+        content: Text(_isArabic ? 'هل أنت متأكد من حذف هذا البيان بالكامل؟' : 'Are you sure you want to delete this entry?', style: const TextStyle(fontFamily: 'Cairo')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(_isArabic ? 'إلغاء' : 'Cancel', style: const TextStyle(fontFamily: 'Cairo'))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(_isArabic ? 'حذف' : 'Delete', style: const TextStyle(color: Colors.red, fontFamily: 'Cairo'))),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirm) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).delete();
+      _showMessage(_isArabic ? 'تم حذف البيان نهائياً.' : 'Entry Deleted.', Colors.red);
+      setState(() {
+        _currentDocId = null;
+        _clearVehicle();
+        _clientTrips.clear();
+        _isReadOnly = false;
+      });
+    } catch (e) {
+      _showMessage('Error: $e', Colors.red);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showMessage(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo')), backgroundColor: color, duration: const Duration(seconds: 3)),
+    );
+  }
+
+  Widget _buildAutocompleteOptions(BuildContext context, AutocompleteOnSelected<String> onSelected, Iterable<String> options) {
+    return Align(
+      alignment: Alignment.topRight,
+      child: Material(
+        elevation: 6.0,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: 220, maxWidth: MediaQuery.of(context).size.width * 0.75),
+          child: ListView.separated(
+            padding: EdgeInsets.zero,
+            shrinkWrap: true,
+            itemCount: options.length,
+            separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey.shade200),
+            itemBuilder: (BuildContext context, int index) {
+              final String option = options.elementAt(index);
+              return InkWell(
+                onTap: () => onSelected(option),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+                  child: Text(option, style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F2A52))),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final availableClients = _selectedSite == 'old' ? _oldSiteClients : _newSiteClients;
+    final textDirection = _isArabic ? TextDirection.rtl : TextDirection.ltr;
+
+    Widget vehicleIconWidget = const Icon(Icons.airport_shuttle, size: 18, color: Color(0xFF28A745));
+    String vehicleFieldLabel = _isArabic ? 'رقم المركبة' : 'Vehicle No.';
+
+    if (_selectedVehicleNumber != null) {
+      vehicleIconWidget = _isTractor
+          ? const Icon(Icons.local_shipping, size: 18, color: Color(0xFFE67E22))
+          : const Icon(Icons.airport_shuttle, size: 18, color: Color(0xFF28A745));
+
+      vehicleFieldLabel += _isTractor
+          ? (_isArabic ? ' - جرار' : ' - Tractor')
+          : (_isArabic ? ' - عربية' : ' - Truck');
+    }
+
+    return Directionality(
+      textDirection: textDirection,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF4F6F9),
+        appBar: AppBar(
+          elevation: 0,
+          centerTitle: true,
+          flexibleSpace: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF0F2A52), Color(0xFF1E4885)],
+                begin: Alignment.centerRight,
+                end: Alignment.centerLeft,
+              ),
+            ),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
+          actions: const [SizedBox(width: 48)],
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Opacity(
+                opacity: 0.9,
+                child: Image.asset('assets/images/logo.png', height: 42, errorBuilder: (context, error, stackTrace) => const SizedBox()),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                  _isArabic ? 'البيان اليومي' : 'Daily Entry',
+                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, fontFamily: 'Cairo')
+              ),
+            ],
+          ),
+        ),
+
+        // ================= الزراير في الأرضية =================
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   children: [
-                    _buildInputFieldRow(label: 'السائق', icon: Icons.person_outline, isRequired: true, isDropdown: true, value: 'أحمد محمد علي'),
-                    const SizedBox(height: 12),
-                    _buildInputFieldRow(label: 'نوع السائق', icon: Icons.person, value: 'سائق شركة - Z', valueColor: Colors.green),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('يتم تحديده تلقائياً حسب السائق', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildInputFieldRow(label: 'رقم العربية', icon: Icons.local_shipping, value: 'ق ل ح 1234'),
-                    const SizedBox(height: 12),
-                    _buildInputFieldRow(label: 'تكعيب العربية (م³)', icon: Icons.inventory_2_outlined, value: '15'),
-                    const SizedBox(height: 12),
-                    _buildCounterField(label: 'عدد النقلات', icon: Icons.numbers, value: '5', isRequired: true),
-                    const SizedBox(height: 20),
-                    // كروت الحساب التلقائي الصغيرتين
-                    Row(
-                      children: [
-                        Expanded(child: _buildMiniCalcCard('إجمالي الأمتار (تلقائي)', '75', 'متر مكعب', Colors.green)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildMiniCalcCard('قيمة الأمتار (تلقائي)', '1,125', 'جنيه', Colors.blue)),
-                      ],
-                    ),
-                    const SizedBox(height: 15),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(5)),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text('سيتم حساب باقي البيانات تلقائياً', style: TextStyle(fontSize: 12, color: Colors.blue)),
-                          const SizedBox(width: 5),
-                          Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
-                        ],
+                    Expanded(
+                      child: SizedBox(
+                        height: 38,
+                        child: ElevatedButton.icon(
+                          onPressed: (_currentDocId != null && _isReadOnly)
+                              ? () {
+                            setState(() => _isReadOnly = false);
+                          }
+                              : null,
+                          icon: const Icon(Icons.edit, color: Colors.white, size: 14),
+                          label: Text(_isArabic ? 'تعديل البيان' : 'Edit', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: (_currentDocId != null && _isReadOnly) ? const Color(0xFFFFA000) : Colors.grey,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                        ),
                       ),
-                    )
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // 4. تفاصيل العملاء (النقلات)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.add, color: Colors.green, size: 18),
-                    label: const Text('إضافة عميل', style: TextStyle(color: Colors.green)),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.green),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                     ),
-                  ),
-                  const Text('تفاصيل العملاء (النقلات)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0A182E))),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _buildClientsTable(),
-              const SizedBox(height: 20),
-
-              // 5. بيانات محسوبة تلقائياً
-              const Text('بيانات محسوبة تلقائياً', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0A182E))),
-              const SizedBox(height: 10),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 2.2, // نسبة الطول للعرض للكروت
-                children: [
-                  _buildAutoCalcCard('سعر المكتب (ج/م³)', '60.00', Icons.business, Colors.blue),
-                  _buildAutoCalcCard('سعر العميل (ج/م³)', '150.00', Icons.money, Colors.blue),
-                  _buildAutoCalcCard('ربح الشركة (ج)', '27,000.00', Icons.trending_up, Colors.green),
-                  _buildAutoCalcCard('إجمالي الأمتار (م³)', '300', Icons.inventory_2, Colors.blue),
-                  _buildAutoCalcCard('قيمة المكتب (ج)', '18,000.00', Icons.business, Colors.blue),
-                  _buildAutoCalcCard('قيمة العميل (ج)', '45,000.00', Icons.money, Colors.blue),
-                ],
-              ),
-              const SizedBox(height: 25),
-
-              // 6. أزرار الإجراءات
-              Row(
-                children: [
-                  Expanded(child: _buildActionButton('حفظ البيان', Icons.save, Colors.blue.shade700)),
-                  const SizedBox(width: 8),
-                  Expanded(child: _buildActionButton('تعديل البيان', Icons.edit, Colors.orange)),
-                  const SizedBox(width: 8),
-                  Expanded(child: _buildActionButton('حذف البيان', Icons.delete, Colors.red)),
-                ],
-              ),
-              const SizedBox(height: 15),
-
-              // 7. ملاحظة سفلية
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                child: Row(
-                  children: [
-                    Icon(Icons.info, color: Colors.blue.shade800),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'ملاحظة: عند حفظ البيان يتم تحديث حساب العميل وحساب المكتب وربح الشركة تلقائياً.',
-                        style: TextStyle(fontSize: 11, color: Colors.black87),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SizedBox(
+                        height: 38,
+                        child: ElevatedButton.icon(
+                          onPressed: _currentDocId != null ? _deleteEntry : null,
+                          icon: const Icon(Icons.delete_forever, color: Colors.white, size: 14),
+                          label: Text(_isArabic ? 'حذف البيان' : 'Delete', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _currentDocId != null ? Colors.red.shade700 : Colors.grey,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    gradient: _isReadOnly ? null : const LinearGradient(colors: [Color(0xFF0F2A52), Color(0xFF1E4885)]),
+                    color: _isReadOnly ? Colors.grey : null,
+                    boxShadow: _isReadOnly ? null : const [BoxShadow(color: Color(0x4D0F2A52), blurRadius: 4, offset: Offset(0, 2))],
+                  ),
+                  child: ElevatedButton.icon(
+                    onPressed: _isReadOnly ? () => _handleReadOnlyTap() : _saveEntry,
+                    icon: const Icon(Icons.save, color: Colors.white, size: 18),
+                    label: Text(
+                        _isArabic
+                            ? (_currentDocId != null ? 'حفظ التعديلات' : 'حفظ البيان')
+                            : 'Save Entry',
+                        style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // ================= محتوى الشاشة =================
+        body: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Opacity(
+                  opacity: 0.15,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 30),
+
+              SafeArea(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.all(10.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 1. الموقع والتاريخ
+                      Card(
+                        color: const Color(0xE6FFFFFF),
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Center(
+                                child: Text(_isArabic ? 'اختر الموقع' : 'Select Site', style: const TextStyle(color: Color(0xFF0F2A52), fontSize: 16, fontWeight: FontWeight.w900, fontFamily: 'Cairo')),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                        _changeSite('old');
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _selectedSite == 'old' ? const Color(0xFF4A78B9) : Colors.white,
+                                        foregroundColor: _selectedSite == 'old' ? Colors.white : const Color(0xFF4A78B9),
+                                        elevation: _selectedSite == 'old' ? 1 : 0,
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        side: BorderSide(color: const Color(0xFF4A78B9), width: _selectedSite == 'old' ? 0 : 1),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      child: FittedBox(child: Text(_isArabic ? 'الموقع القديم' : 'Old Site', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                        _changeSite('new');
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _selectedSite == 'new' ? const Color(0xFF28A745) : Colors.white,
+                                        foregroundColor: _selectedSite == 'new' ? Colors.white : const Color(0xFF28A745),
+                                        elevation: _selectedSite == 'new' ? 1 : 0,
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        side: BorderSide(color: const Color(0xFF28A745), width: _selectedSite == 'new' ? 0 : 1),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      child: FittedBox(child: Text(_isArabic ? 'الموقع الجديد' : 'New Site', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: InkWell(
+                                      onTap: () {
+                                        if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                        _selectDate(context);
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(color: const Color(0xCCF2F6FA), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey.shade200)),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.calendar_month, color: Color(0xFF4A78B9), size: 16),
+                                                const SizedBox(width: 6),
+                                                Text(_isArabic ? 'التاريخ:' : 'Date:', style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF4A78B9), fontSize: 13, fontWeight: FontWeight.bold)),
+                                              ],
+                                            ),
+                                            _buildFormattedDate(),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    flex: 2,
+                                    child: ElevatedButton.icon(
+                                      onPressed: () {
+                                        if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                        _showDailyRecords();
+                                      },
+                                      icon: const Icon(Icons.history, size: 14, color: Colors.white),
+                                      label: Text(_isArabic ? 'سجل اليوم' : 'History', style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF1E4885),
+                                        padding: const EdgeInsets.symmetric(vertical: 7),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // 2. بيانات المركبة والسائق
+                      Card(
+                        color: const Color(0xE6FFFFFF),
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: _buildCompactInput(
+                                      label: vehicleFieldLabel,
+                                      iconWidget: vehicleIconWidget,
+                                      child: Container(
+                                        height: 38,
+                                        decoration: _boxDecoration(),
+                                        child: Autocomplete<String>(
+                                          key: ValueKey('vehicle_${_selectedSite}_$_vehicleKeyCounter'),
+                                          initialValue: TextEditingValue(text: _selectedVehicleNumber ?? ''),
+                                          optionsViewBuilder: _buildAutocompleteOptions,
+                                          optionsBuilder: (TextEditingValue textEditingValue) {
+                                            if (_isReadOnly) return const Iterable<String>.empty();
+                                            final options = _vehiclesDB.map((v) => _toArabicNumbers(v['number'] as String)).toList();
+                                            if (textEditingValue.text.isEmpty) return options;
+                                            String searchText = _toArabicNumbers(textEditingValue.text);
+                                            return options.where((opt) => opt.contains(searchText));
+                                          },
+                                          onSelected: (String selection) {
+                                            FocusScope.of(context).unfocus();
+                                            setState(() => _vehicleSearchActive = false);
+                                            _onVehicleSelected(selection);
+                                          },
+                                          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                                            return TextField(
+                                              controller: controller,
+                                              focusNode: focusNode,
+                                              readOnly: _isReadOnly || !_vehicleSearchActive,
+                                              maxLines: 1,
+                                              textAlignVertical: TextAlignVertical.center,
+                                              onTap: () {
+                                                if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                                if (!focusNode.hasFocus) focusNode.requestFocus();
+                                              },
+                                              decoration: InputDecoration(
+                                                isDense: true,
+                                                hintText: _isArabic ? 'بحث...' : 'Search...',
+                                                hintStyle: const TextStyle(fontSize: 11, fontFamily: 'Cairo', color: Colors.grey),
+                                                border: InputBorder.none,
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                                suffixIconConstraints: const BoxConstraints(maxHeight: 38),
+                                                suffixIcon: _isReadOnly ? const SizedBox.shrink() : ValueListenableBuilder<TextEditingValue>(
+                                                  valueListenable: controller,
+                                                  builder: (context, value, child) {
+                                                    return Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      mainAxisAlignment: MainAxisAlignment.end,
+                                                      children: [
+                                                        if (value.text.isNotEmpty)
+                                                          InkWell(
+                                                            onTap: () {
+                                                              _clearVehicle();
+                                                            },
+                                                            child: const Padding(
+                                                              padding: EdgeInsets.symmetric(horizontal: 4.0),
+                                                              child: Icon(Icons.close, size: 16, color: Colors.red),
+                                                            ),
+                                                          ),
+                                                        InkWell(
+                                                          onTap: () {
+                                                            setState(() => _vehicleSearchActive = true);
+                                                            focusNode.requestFocus();
+                                                          },
+                                                          child: const Padding(
+                                                            padding: EdgeInsets.symmetric(horizontal: 4.0),
+                                                            child: Icon(Icons.search, size: 16, color: Colors.grey),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                      ],
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Cairo'),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    flex: 2,
+                                    child: _buildCompactInput(
+                                      label: _isArabic ? 'التكعيب (م³)' : 'Cubage (m³)',
+                                      iconWidget: const Icon(Icons.view_in_ar_outlined, size: 13, color: Color(0xFF4A78B9)),
+                                      child: Container(
+                                        height: 38,
+                                        width: double.infinity,
+                                        decoration: BoxDecoration(color: const Color(0x80FFFFFF), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey.shade200)),
+                                        child: Center(child: Text(_formatCubage(_cubage), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black, fontFamily: 'Cairo'))),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: _buildCompactInput(
+                                      label: _isArabic ? 'اسم السائق' : 'Driver Name',
+                                      iconWidget: const Icon(Icons.person_outline, size: 13, color: Color(0xFF4A78B9)),
+                                      child: Container(
+                                        height: 38,
+                                        width: double.infinity,
+                                        decoration: BoxDecoration(color: const Color(0x80FFFFFF), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey.shade200)),
+                                        child: Center(child: FittedBox(child: Text(_driverName, style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12, color: _selectedVehicleNumber == null ? Colors.grey : Colors.black)))),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    flex: 2,
+                                    child: _buildCompactInput(
+                                      label: _isArabic ? 'التبعية' : 'Type',
+                                      iconWidget: const Icon(Icons.badge_outlined, size: 13, color: Color(0xFF4A78B9)),
+                                      child: Container(
+                                        height: 38,
+                                        width: double.infinity,
+                                        decoration: BoxDecoration(color: const Color(0x80FFFFFF), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey.shade200)),
+                                        child: Center(child: FittedBox(child: Text(_driverType, style: TextStyle(fontFamily: 'Cairo', color: _typeCode == 'Z' ? const Color(0xFF28A745) : const Color(0xFFE67E22), fontWeight: FontWeight.bold, fontSize: 12)))),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // 3. تفاصيل العملاء
+                      Card(
+                        color: const Color(0xE6FFFFFF),
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10.0),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(_isArabic ? 'تفاصيل النقلات للعملاء' : 'Clients Trips Details', style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold)),
+                                  OutlinedButton.icon(
+                                    onPressed: (_selectedVehicleNumber == null) ? null : () {
+                                      if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                      _addClientTrip();
+                                    },
+                                    icon: const Icon(Icons.add, color: Color(0xFF28A745), size: 14),
+                                    label: Text(_isArabic ? 'إضافة عميل' : 'Add Client', style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF28A745), fontSize: 11, fontWeight: FontWeight.bold)),
+                                    style: OutlinedButton.styleFrom(
+                                      side: BorderSide(color: _selectedVehicleNumber == null ? Colors.grey : const Color(0xFF28A745)),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                      minimumSize: const Size(0, 28),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+
+                              _clientTrips.isEmpty
+                                  ? Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(vertical: 40),
+                                decoration: BoxDecoration(color: const Color(0x80FFFFFF), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey.shade200)),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.assignment_add, size: 30, color: Color(0xFFBDBDBD)),
+                                    const SizedBox(height: 4),
+                                    Text(_isArabic ? 'لا توجد نقلات مسجلة حتى الآن' : 'No trips recorded yet', style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF757575), fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              )
+                                  : Container(
+                                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6)),
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      color: const Color(0xFF0F2A52),
+                                      padding: const EdgeInsets.symmetric(vertical: 6),
+                                      child: Row(
+                                        children: [
+                                          Expanded(flex: 12, child: Center(child: Text(_isArabic ? 'اسم العميل' : 'Client', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 11)))),
+                                          Expanded(flex: 4, child: Center(child: Text(_isArabic ? 'النقلات' : 'Trips', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 11)))),
+                                          Expanded(flex: 3, child: Center(child: Text(_isArabic ? 'الكمية' : 'Qty', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 11)))),
+                                          const Expanded(flex: 2, child: Center(child: Icon(Icons.delete, color: Colors.white, size: 14))),
+                                        ],
+                                      ),
+                                    ),
+                                    ListView.separated(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      itemCount: _clientTrips.length,
+                                      separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.grey),
+                                      itemBuilder: (context, index) {
+                                        int currentTrips = _clientTrips[index]['trips'];
+                                        double currentCubage = currentTrips * _cubage;
+
+                                        return Container(
+                                          color: const Color(0xCCFFFFFF),
+                                          padding: const EdgeInsets.symmetric(vertical: 3),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                flex: 12,
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                                  child: Container(
+                                                    height: 38,
+                                                    decoration: _boxDecoration(),
+                                                    child: Autocomplete<String>(
+                                                      initialValue: TextEditingValue(text: _clientTrips[index]['client'] ?? ''),
+                                                      optionsViewBuilder: _buildAutocompleteOptions,
+                                                      optionsBuilder: (TextEditingValue textEditingValue) {
+                                                        if (_isReadOnly) return const Iterable<String>.empty();
+                                                        if (textEditingValue.text.isEmpty) return availableClients;
+                                                        return availableClients.where((opt) => opt.contains(textEditingValue.text));
+                                                      },
+                                                      onSelected: (String selection) {
+                                                        FocusScope.of(context).unfocus();
+                                                        setState(() => _clientTrips[index]['searchActive'] = false);
+                                                        bool exists = _clientTrips.any((trip) => trip['client'] == selection && _clientTrips.indexOf(trip) != index);
+                                                        if (exists) {
+                                                          _showMessage(_isArabic ? 'العميل مضاف بالفعل!' : 'Client already added!', Colors.red);
+                                                        } else {
+                                                          setState(() => _clientTrips[index]['client'] = selection);
+                                                        }
+                                                      },
+                                                      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                                                        return TextField(
+                                                          controller: controller,
+                                                          focusNode: focusNode,
+                                                          readOnly: _isReadOnly || !(_clientTrips[index]['searchActive'] ?? false),
+                                                          maxLines: 1,
+                                                          textAlignVertical: TextAlignVertical.center,
+                                                          onTap: () {
+                                                            if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                                            if (!focusNode.hasFocus) focusNode.requestFocus();
+                                                          },
+                                                          decoration: InputDecoration(
+                                                            isDense: true,
+                                                            hintText: _isArabic ? 'بحث...' : 'Search...',
+                                                            hintStyle: const TextStyle(fontSize: 11, fontFamily: 'Cairo', color: Colors.grey),
+                                                            border: InputBorder.none,
+                                                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                                            suffixIconConstraints: const BoxConstraints(maxHeight: 38),
+                                                            suffixIcon: _isReadOnly ? const SizedBox.shrink() : ValueListenableBuilder<TextEditingValue>(
+                                                                valueListenable: controller,
+                                                                builder: (context, value, child) {
+                                                                  return Row(
+                                                                    mainAxisSize: MainAxisSize.min,
+                                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                                    children: [
+                                                                      if (value.text.isNotEmpty)
+                                                                        InkWell(
+                                                                          onTap: () {
+                                                                            controller.clear();
+                                                                            setState(() {
+                                                                              _clientTrips[index]['searchActive'] = false;
+                                                                              _clientTrips[index]['client'] = null;
+                                                                            });
+                                                                            if (!focusNode.hasFocus) focusNode.requestFocus();
+                                                                          },
+                                                                          child: const Padding(
+                                                                            padding: EdgeInsets.symmetric(horizontal: 4.0),
+                                                                            child: Icon(Icons.close, size: 16, color: Colors.red),
+                                                                          ),
+                                                                        ),
+                                                                      InkWell(
+                                                                        onTap: () {
+                                                                          setState(() => _clientTrips[index]['searchActive'] = true);
+                                                                          focusNode.requestFocus();
+                                                                        },
+                                                                        child: const Padding(
+                                                                          padding: EdgeInsets.symmetric(horizontal: 4.0),
+                                                                          child: Icon(Icons.search, size: 16, color: Colors.grey),
+                                                                        ),
+                                                                      ),
+                                                                      const SizedBox(width: 4),
+                                                                    ],
+                                                                  );
+                                                                }
+                                                            ),
+                                                          ),
+                                                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold),
+                                                        );
+                                                      },
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                flex: 4,
+                                                child: Opacity(
+                                                  opacity: _isReadOnly ? 0.5 : 1.0,
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.center,
+                                                    children: [
+                                                      InkWell(
+                                                        onTap: () {
+                                                          if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                                          setState(() => _clientTrips[index]['trips']++);
+                                                        },
+                                                        child: Container(padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)), child: const Icon(Icons.add, size: 13)),
+                                                      ),
+                                                      Padding(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                                        child: Text(_toArabicNumbers(currentTrips.toString()), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12)),
+                                                      ),
+                                                      InkWell(
+                                                        onTap: () {
+                                                          if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                                          setState(() {
+                                                            if (currentTrips > 1) _clientTrips[index]['trips']--;
+                                                          });
+                                                        },
+                                                        child: Container(padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)), child: const Icon(Icons.remove, size: 13)),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                  flex: 3,
+                                                  child: Center(
+                                                    child: Column(
+                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                      children: [
+                                                        Text(_formatCubage(currentCubage), style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF0F2A52), fontSize: 11)),
+                                                        Text('(${_formatCubage(_cubage)}×${_toArabicNumbers(currentTrips.toString())})', style: const TextStyle(fontFamily: 'Cairo', fontSize: 8, color: Colors.grey)),
+                                                      ],
+                                                    ),
+                                                  )
+                                              ),
+                                              Expanded(
+                                                flex: 2,
+                                                child: Opacity(
+                                                  opacity: _isReadOnly ? 0.3 : 1.0,
+                                                  child: IconButton(
+                                                    padding: EdgeInsets.zero,
+                                                    constraints: const BoxConstraints(),
+                                                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 16),
+                                                    onPressed: () {
+                                                      if (_isReadOnly) { _handleReadOnlyTap(); return; }
+                                                      setState(() => _clientTrips.removeAt(index));
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (_isLoading)
+                Container(
+                  color: const Color(0x4D000000),
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF0F2A52)),
+                  ),
+                ),
             ],
           ),
         ),
@@ -208,316 +1089,28 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     );
   }
 
-  // ==================== الدوال المساعدة لبناء العناصر ====================
-
-  Widget _buildLocationToggle({required String title, required IconData icon, required bool isSelected, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.green.withOpacity(0.05) : Colors.white,
-          border: Border.all(color: isSelected ? Colors.green : Colors.blue.shade200, width: 1.5),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildCompactInput({required String label, required Widget iconWidget, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Text(title, style: TextStyle(color: isSelected ? Colors.green : Colors.blue.shade800, fontWeight: FontWeight.bold)),
-            const SizedBox(width: 8),
-            Icon(icon, color: isSelected ? Colors.green : Colors.blue.shade800, size: 20),
+            iconWidget,
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF4A78B9))),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSectionContainer({required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, spreadRadius: 1)],
-      ),
-      child: child,
-    );
-  }
-
-  Widget _buildInputFieldRow({required String label, required IconData icon, bool isRequired = false, bool isDropdown = false, required String value, Color valueColor = Colors.black87}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        // حقل الإدخال
-        Expanded(
-          flex: 2,
-          child: Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(5),
-            ),
-            alignment: Alignment.center,
-            child: isDropdown
-                ? Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
-                Text(value, style: TextStyle(color: valueColor, fontSize: 13)),
-              ],
-            )
-                : Text(value, style: TextStyle(color: valueColor, fontSize: 13, fontWeight: valueColor == Colors.green ? FontWeight.bold : FontWeight.normal)),
-          ),
-        ),
-        const SizedBox(width: 15),
-        // التسمية والأيقونة
-        Expanded(
-          flex: 1,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              if (isRequired) const Text(' * ', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-              Text(label, style: const TextStyle(fontSize: 13, color: Colors.black87)),
-              const SizedBox(width: 8),
-              Icon(icon, color: const Color(0xFF0A182E), size: 20),
-            ],
-          ),
-        ),
+        const SizedBox(height: 2),
+        child,
       ],
     );
   }
 
-  Widget _buildCounterField({required String label, required IconData icon, required String value, bool isRequired = false}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Expanded(
-          flex: 2,
-          child: Row(
-            children: [
-              Container(
-                width: 35,
-                height: 35,
-                decoration: BoxDecoration(color: const Color(0xFF0A182E), borderRadius: BorderRadius.circular(5)),
-                child: const Icon(Icons.remove, color: Colors.white, size: 20),
-              ),
-              Expanded(
-                child: Container(
-                  height: 35,
-                  margin: const EdgeInsets.symmetric(horizontal: 5),
-                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(5)),
-                  alignment: Alignment.center,
-                  child: Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                ),
-              ),
-              Container(
-                width: 35,
-                height: 35,
-                decoration: BoxDecoration(color: const Color(0xFF0A182E), borderRadius: BorderRadius.circular(5)),
-                child: const Icon(Icons.add, color: Colors.white, size: 20),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 15),
-        Expanded(
-          flex: 1,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              if (isRequired) const Text(' * ', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-              Text(label, style: const TextStyle(fontSize: 13, color: Colors.black87)),
-              const SizedBox(width: 8),
-              Icon(icon, color: const Color(0xFF0A182E), size: 20),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMiniCalcCard(String title, String value, String subtitle, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
-        border: Border.all(color: color.withOpacity(0.3)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          Text(title, style: TextStyle(fontSize: 10, color: color)),
-          const SizedBox(height: 5),
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-          Text(subtitle, style: TextStyle(fontSize: 10, color: color)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildClientsTable() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: const BoxDecoration(color: Color(0xFF0A182E), borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
-            child: const Row(
-              children: [
-                Expanded(flex: 1, child: Center(child: Text('م', style: TextStyle(color: Colors.white, fontSize: 11)))),
-                Expanded(flex: 3, child: Center(child: Text('اسم العميل', style: TextStyle(color: Colors.white, fontSize: 11)))),
-                Expanded(flex: 2, child: Center(child: Text('عدد النقلات', style: TextStyle(color: Colors.white, fontSize: 11)))),
-                Expanded(flex: 2, child: Center(child: Text('الكميات (م³)', style: TextStyle(color: Colors.white, fontSize: 11)))),
-                Expanded(flex: 2, child: Center(child: Text('الإجراءات', style: TextStyle(color: Colors.white, fontSize: 11)))),
-              ],
-            ),
-          ),
-          // Rows
-          _buildClientTableRow('1', 'شركة السلام', '5', '75', '15 × 5'),
-          _buildClientTableRow('2', 'شركة الرضا', '5', '75', '15 × 5'),
-          _buildClientTableRow('3', 'شركة الرحمة', '10', '150', '15 × 10', isLast: true),
-
-          // Totals Footer
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10))),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.inventory_2, color: Color(0xFF0A182E), size: 20),
-                      const SizedBox(width: 8),
-                      Column(
-                        children: [
-                          const Text('إجمالي الكميات (م³)', style: TextStyle(fontSize: 10)),
-                          Text('300', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
-                        ],
-                      )
-                    ],
-                  ),
-                ),
-                Container(width: 1, height: 30, color: Colors.grey.shade300),
-                Expanded(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.local_shipping, color: Color(0xFF0A182E), size: 20),
-                      const SizedBox(width: 8),
-                      Column(
-                        children: [
-                          const Text('إجمالي النقلات', style: TextStyle(fontSize: 10)),
-                          Text('20', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
-                        ],
-                      )
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildClientTableRow(String id, String name, String trips, String qty, String calc, {bool isLast = false}) {
-    return Container(
-      decoration: BoxDecoration(
-        border: isLast ? null : Border(bottom: BorderSide(color: Colors.grey.shade200)),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Expanded(flex: 1, child: Center(child: Text(id, style: const TextStyle(fontSize: 12)))),
-          Expanded(flex: 3, child: Center(child: Text(name, style: const TextStyle(fontSize: 12)))),
-          Expanded(
-            flex: 2,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)),
-                child: Text(trips, style: const TextStyle(fontSize: 12)),
-              ),
-            ),
-          ),
-          Expanded(
-              flex: 2,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('م $qty', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  Text(calc, style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                ],
-              )
-          ),
-          Expanded(
-              flex: 2,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.edit, color: Colors.green.shade400, size: 18),
-                  const SizedBox(width: 10),
-                  const Icon(Icons.delete_outline, color: Colors.red, size: 18),
-                ],
-              )
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAutoCalcCard(String title, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5)],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(5)),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(title, style: TextStyle(fontSize: 9, color: color == Colors.green ? Colors.green : Colors.black54)),
-                Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color == Colors.green ? Colors.green : Colors.blue.shade800)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(String title, IconData icon, Color color) {
-    return ElevatedButton.icon(
-      onPressed: () {},
-      icon: Icon(icon, color: Colors.white, size: 16),
-      label: Text(title, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
+  BoxDecoration _boxDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: Colors.grey.shade300),
     );
   }
 }
