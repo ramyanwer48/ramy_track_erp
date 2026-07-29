@@ -15,6 +15,19 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
+// التعديل الجذري: هنا الكود هيتنفذ بنجاح لأنه مكتوب "قبل" التقييم النهائي
+subprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.library")) {
+            extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
+                compileSdk = 36
+            }
+        }
+    }
+}
+
+// سطر فلاتر اللي بيقفل التقييم (لازم يكون تحت التعديل بتاعنا)
 subprojects {
     project.evaluationDependsOn(":app")
 }

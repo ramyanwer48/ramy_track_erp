@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'client_details_screen.dart';
 
 class ClientAccountsScreen extends StatefulWidget {
   const ClientAccountsScreen({super.key});
@@ -9,41 +10,57 @@ class ClientAccountsScreen extends StatefulWidget {
 }
 
 class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
-  // المتغيرات الأساسية
   String _selectedSite = 'old';
   final bool _isArabic = true;
-  bool _isLoading = false;
 
-  // العميل المختار للتصفية وعرض السجل
-  String? _selectedClient;
-  bool _isReadOnly = true;
-
-  // قواعد بيانات العملاء الافتراضية (نفس اللي في البيان اليومي لتتطابق البيانات)
-  final List<String> _oldSiteClients = [
+  final List<String> _oldSiteNames = [
     'أحمد سعد', 'الأقصي', 'الرجاء (3)', 'العماد', 'شركة السلام', 'جنيدي',
     'شركة طلعت مصطفي', 'شركة مصر التشييد والبناء', 'شركة الغريب', 'محمود صابر',
     'معتمد', 'وطنية المدرسة', 'شركة الغريب (بون رسمي)', 'سامكريت (خط المواسير)',
     'الرجاء (1-2)', 'خلاطة مصر التشييد والبناء', 'خلاطة أبراج', 'خلاطة السلام'
   ];
-  final List<String> _newSiteClients = ['بخيت', 'عادل'];
 
-  // دالة الرسائل الموحدة في الأسفل
-  void _showMessage(String message, Color color, {Duration duration = const Duration(milliseconds: 1500)}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Cairo', color: Colors.white),
-        ),
-        backgroundColor: color,
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+  final List<String> _newSiteNames = [
+    'بخيت', 'عادل'
+  ];
+
+  // جدول الأسعار الاحتياطي المضمون بالهمزات
+  final Map<String, double> _fallbackPrices = {
+    'أحمد سعد': 115.0,
+    'احمد سعد': 115.0,
+    'الأقصي': 125.0,
+    'الاقصي': 125.0,
+    'الرجاء (3)': 115.0,
+    'العماد': 110.0,
+    'شركة السلام': 120.0,
+    'جنيدي': 125.0,
+    'شركة طلعت مصطفي': 120.0,
+    'شركة مصر التشييد والبناء': 120.0,
+    'شركة الغريب': 125.0,
+    'محمود صابر': 120.0,
+    'معتمد': 115.0,
+    'وطنية المدرسة': 125.0,
+    'شركة الغريب (بون رسمي)': 140.0,
+    'سامكريت (خط المواسير)': 100.0,
+    'الرجاء (1-2)': 95.0,
+    'خلاطة مصر التشييد والبناء': 100.0,
+    'خلاطة أبراج': 100.0,
+    'خلاطة السلام': 105.0,
+    'بخيت': 70.0,
+    'عادل': 70.0,
+  };
+
+  String _normalizeArabic(String text) {
+    if (text.isEmpty) return '';
+    return text
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ى', 'ي')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .toLowerCase();
   }
 
   String _toArabicNumbers(String text) {
@@ -59,60 +76,68 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
   void _changeSite(String site) {
     setState(() {
       _selectedSite = site;
-      _selectedClient = null; // إعادة تعيين العميل عند تغيير الموقع
     });
   }
 
-  // نافذة إضافة عميل جديد
   void _showAddClientDialog() {
     final TextEditingController newClientController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_isArabic ? 'إضافة عميل جديد' : 'Add New Client', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
-        content: TextField(
-          controller: newClientController,
-          decoration: InputDecoration(
-            hintText: _isArabic ? 'اسم العميل أو الشركة' : 'Client/Company Name',
-            hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('إضافة عميل جديد', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
+          content: TextField(
+            controller: newClientController,
+            decoration: InputDecoration(
+              hintText: 'اسم العميل أو الشركة',
+              hintStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 12),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              isDense: true,
+            ),
+            style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
           ),
-          style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (newClientController.text.trim().isNotEmpty) {
+                  String newName = newClientController.text.trim();
+                  await FirebaseFirestore.instance.collection('clients').add({
+                    'name': newName,
+                    'site': _selectedSite,
+                    'createdAt': FieldValue.serverTimestamp(),
+                  });
+
+                  if (!mounted) return;
+                  Navigator.pop(dialogContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('تم إضافة العميل بنجاح', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                      backgroundColor: Color(0xFF28A745),
+                      behavior: SnackBarBehavior.floating,
+                      margin: EdgeInsets.all(16),
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF28A745)),
+              child: const Text('إضافة', style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(_isArabic ? 'إلغاء' : 'Cancel', style: const TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (newClientController.text.trim().isNotEmpty) {
-                setState(() {
-                  if (_selectedSite == 'old') {
-                    _oldSiteClients.add(newClientController.text.trim());
-                  } else {
-                    _newSiteClients.add(newClientController.text.trim());
-                  }
-                });
-                Navigator.pop(context);
-                _showMessage(_isArabic ? 'تم إضافة العميل بنجاح' : 'Client added successfully', const Color(0xFF28A745));
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF28A745)),
-            child: Text(_isArabic ? 'إضافة' : 'Add', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final availableClients = _selectedSite == 'old' ? _oldSiteClients : _newSiteClients;
-    final textDirection = _isArabic ? TextDirection.rtl : TextDirection.ltr;
-
     return Directionality(
-      textDirection: textDirection,
+      textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F6F9),
         appBar: AppBar(
@@ -132,352 +157,370 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
             onPressed: () => Navigator.pop(context),
           ),
           actions: const [SizedBox(width: 48)],
-          title: Text(
-            _isArabic ? 'حسابات العملاء' : 'Client Accounts',
-            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, fontFamily: 'Cairo'),
+          title: const Text(
+            'حسابات العملاء',
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, fontFamily: 'Cairo'),
           ),
         ),
 
-        // ================= الأزرار في الأرضية بنفس الهوية المطلوبة =================
-        bottomNavigationBar: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(10.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    // زر اعتماد (أخضر)
-                    Expanded(
-                      child: SizedBox(
-                        height: 38,
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showMessage(_isArabic ? 'تم اعتماد الحساب بنجاح' : 'Account Approved', const Color(0xFF28A745)),
-                          icon: const Icon(Icons.check_circle_outline, color: Colors.white, size: 14),
-                          label: FittedBox(child: Text(_isArabic ? 'اعتماد' : 'Approve', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF28A745),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            padding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // زر تعديل (برتقالي)
-                    Expanded(
-                      child: SizedBox(
-                        height: 38,
-                        child: ElevatedButton.icon(
-                          onPressed: () => setState(() => _isReadOnly = false),
-                          icon: const Icon(Icons.edit, color: Colors.white, size: 14),
-                          label: FittedBox(child: Text(_isArabic ? 'تعديل' : 'Edit', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFFA000),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            padding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // زر حذف (أحمر)
-                    Expanded(
-                      child: SizedBox(
-                        height: 38,
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showMessage(_isArabic ? 'تم حذف السجل بنجاح' : 'Deleted Successfully', Colors.red.shade700),
-                          icon: const Icon(Icons.delete_forever, color: Colors.white, size: 14),
-                          label: FittedBox(child: Text(_isArabic ? 'حذف' : 'Delete', style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red.shade700,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            padding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                // زر حفظ (أزرق متدرج)
-                Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(6),
-                    gradient: const LinearGradient(colors: [Color(0xFF0F2A52), Color(0xFF1E4885)]),
-                    boxShadow: const [BoxShadow(color: Color(0x4D0F2A52), blurRadius: 4, offset: Offset(0, 2))],
-                  ),
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      setState(() => _isReadOnly = true);
-                      _showMessage(_isArabic ? 'تم حفظ التعديلات بنجاح' : 'Saved Successfully', const Color(0xFF28A745));
-                    },
-                    icon: const Icon(Icons.save, color: Colors.white, size: 18),
-                    label: Text(
-                      _isArabic ? 'حفظ' : 'Save',
-                      style: const TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        body: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('clients').where('site', isEqualTo: _selectedSite).snapshots(),
+            builder: (context, clientsSnapshot) {
+              return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('settings').snapshots(),
+                  builder: (context, settingsSnapshot) {
+                    return StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance.collection('daily_entries').snapshots(),
+                        builder: (context, tripsSnapshot) {
+                          return StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance.collection('settlements').snapshots(),
+                              builder: (context, paymentsSnapshot) {
 
-        // ================= المحتوى الرئيسي =================
-        body: GestureDetector(
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.all(10.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. اختيار الموقع (مطابق تماماً للبيان اليومي)
-                  Card(
-                    color: const Color(0xE6FFFFFF),
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Center(
-                            child: Text(_isArabic ? 'اختر الموقع' : 'Select Site', style: const TextStyle(color: Color(0xFF0F2A52), fontSize: 16, fontWeight: FontWeight.w900, fontFamily: 'Cairo')),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () => _changeSite('old'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _selectedSite == 'old' ? const Color(0xFF4A78B9) : Colors.white,
-                                    foregroundColor: _selectedSite == 'old' ? Colors.white : const Color(0xFF4A78B9),
-                                    elevation: _selectedSite == 'old' ? 1 : 0,
-                                    padding: const EdgeInsets.symmetric(vertical: 4),
-                                    side: BorderSide(color: const Color(0xFF4A78B9), width: _selectedSite == 'old' ? 0 : 1),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                  ),
-                                  child: FittedBox(child: Text(_isArabic ? 'الموقع القديم' : 'Old Site', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () => _changeSite('new'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _selectedSite == 'new' ? const Color(0xFF28A745) : Colors.white,
-                                    foregroundColor: _selectedSite == 'new' ? Colors.white : const Color(0xFF28A745),
-                                    elevation: _selectedSite == 'new' ? 1 : 0,
-                                    padding: const EdgeInsets.symmetric(vertical: 4),
-                                    side: BorderSide(color: const Color(0xFF28A745), width: _selectedSite == 'new' ? 0 : 1),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                                  ),
-                                  child: FittedBox(child: Text(_isArabic ? 'الموقع الجديد' : 'New Site', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
+                                List<String> combinedNames = List.from(_selectedSite == 'old' ? _oldSiteNames : _newSiteNames);
 
-                  // 2. بطاقة الملخص (عدد العملاء وإجمالي المستحقات)
-                  Card(
-                    color: const Color(0xE6FFFFFF),
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          Column(
-                            children: [
-                              Text(_isArabic ? 'عدد العملاء' : 'Clients Count', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Color(0xFF4A78B9), fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 4),
-                              Text(_toArabicNumbers(availableClients.length.toString()), style: const TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F2A52))),
-                            ],
-                          ),
-                          Container(height: 30, width: 1, color: Colors.grey.shade300),
-                          Column(
-                            children: [
-                              Text(_isArabic ? 'إجمالي المستحقات' : 'Total Dues', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Color(0xFF4A78B9), fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 4),
-                              Text(_toArabicNumbers('٠ م³'), style: const TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF28A745))),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
+                                if (clientsSnapshot.hasData) {
+                                  for (var doc in clientsSnapshot.data!.docs) {
+                                    var data = doc.data() as Map<String, dynamic>;
+                                    String newName = data['name'].toString().trim();
+                                    if (!combinedNames.contains(newName)) {
+                                      combinedNames.insert(0, newName);
+                                    }
+                                  }
+                                }
 
-                  // 3. قسم التصفية واختيار العميل + زر إضافة عميل جديد
-                  Card(
-                    color: const Color(0xE6FFFFFF),
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(_isArabic ? 'تصفية وحسابات عميل' : 'Client Filter', style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold)),
-                              OutlinedButton.icon(
-                                onPressed: _showAddClientDialog,
-                                icon: const Icon(Icons.add, color: Color(0xFF28A745), size: 14),
-                                label: Text(_isArabic ? 'إضافة عميل' : 'Add Client', style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF28A745), fontSize: 11, fontWeight: FontWeight.bold)),
-                                style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(color: Color(0xFF28A745)),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                                  minimumSize: const Size(0, 28),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // خانة اختيار / بحث العميل
-                          Container(
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.grey.shade300),
-                            ),
-                            child: Autocomplete<String>(
-                              optionsBuilder: (TextEditingValue textEditingValue) {
-                                if (textEditingValue.text.isEmpty) return availableClients;
-                                return availableClients.where((opt) => opt.contains(textEditingValue.text));
-                              },
-                              onSelected: (String selection) {
-                                setState(() {
-                                  _selectedClient = selection;
-                                });
-                              },
-                              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                                return TextField(
-                                  controller: controller,
-                                  focusNode: focusNode,
-                                  decoration: InputDecoration(
-                                    isDense: true,
-                                    hintText: _isArabic ? 'اختر أو ابحث عن اسم العميل...' : 'Select or search client...',
-                                    hintStyle: const TextStyle(fontSize: 11, fontFamily: 'Cairo', color: Colors.grey),
-                                    border: InputBorder.none,
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                                    suffixIcon: const Icon(Icons.search, size: 16, color: Colors.grey),
+                                Map<String, double> livePrices = {};
+                                if (settingsSnapshot.hasData) {
+                                  for (var doc in settingsSnapshot.data!.docs) {
+                                    var data = doc.data() as Map<String, dynamic>;
+                                    double price = 0.0;
+                                    for (var val in data.values) {
+                                      double? p = double.tryParse(val.toString());
+                                      if (p != null && p > 0) {
+                                        price = p;
+                                        break;
+                                      }
+                                    }
+                                    if (price > 0) {
+                                      livePrices[doc.id.trim()] = price;
+                                    }
+                                  }
+                                }
+
+                                List<Map<String, dynamic>> currentClients = [];
+                                double totalDuesAll = 0.0;
+
+                                for (String clientName in combinedNames) {
+                                  double clientPrice = 0.0;
+
+                                  if (livePrices.containsKey(clientName)) {
+                                    clientPrice = livePrices[clientName]!;
+                                  } else {
+                                    for (var entry in livePrices.entries) {
+                                      if (_normalizeArabic(entry.key) == _normalizeArabic(clientName)) {
+                                        clientPrice = entry.value;
+                                        break;
+                                      }
+                                    }
+                                  }
+
+                                  if (clientPrice == 0.0) {
+                                    for (var entry in _fallbackPrices.entries) {
+                                      if (_normalizeArabic(entry.key) == _normalizeArabic(clientName)) {
+                                        clientPrice = entry.value;
+                                        break;
+                                      }
+                                    }
+                                    if (clientPrice == 0.0) clientPrice = 115.0;
+                                  }
+
+                                  double totalCubage = 0.0;
+                                  String targetNorm = _normalizeArabic(clientName);
+
+                                  if (tripsSnapshot.hasData) {
+                                    for (var tripDoc in tripsSnapshot.data!.docs) {
+                                      var tData = tripDoc.data() as Map<String, dynamic>;
+                                      bool matches = false;
+
+                                      tData.forEach((k, v) {
+                                        if (v != null && _normalizeArabic(v.toString()).contains(targetNorm)) {
+                                          matches = true;
+                                        }
+                                      });
+
+                                      if (!matches && tData.containsKey('clientStrips') && tData['clientStrips'] is List) {
+                                        for (var strip in tData['clientStrips']) {
+                                          if (strip is Map) {
+                                            strip.forEach((sk, sv) {
+                                              if (sv != null && _normalizeArabic(sv.toString()).contains(targetNorm)) {
+                                                matches = true;
+                                              }
+                                            });
+                                          }
+                                        }
+                                      }
+
+                                      if (matches) {
+                                        double cubage = double.tryParse(tData['totalCubage']?.toString() ?? tData['cubage']?.toString() ?? '0') ?? 0.0;
+                                        totalCubage += cubage;
+                                      }
+                                    }
+                                  }
+
+                                  double totalPayments = 0.0;
+                                  if (paymentsSnapshot.hasData) {
+                                    for (var pDoc in paymentsSnapshot.data!.docs) {
+                                      var pData = pDoc.data() as Map<String, dynamic>;
+                                      String pName = pData['name']?.toString().trim() ?? '';
+                                      if (_normalizeArabic(pName) == targetNorm) {
+                                        totalPayments += double.tryParse(pData['amount']?.toString() ?? pData['totalPayments']?.toString() ?? '0') ?? 0.0;
+                                      }
+                                    }
+                                  }
+
+                                  double due = (totalCubage * clientPrice) - totalPayments;
+                                  totalDuesAll += due;
+
+                                  currentClients.add({
+                                    'name': clientName,
+                                    'due': due,
+                                    'lastJob': totalCubage > 0 ? 'نشط' : 'لم يبدأ بعد'
+                                  });
+                                }
+
+                                String formattedTotalDues = totalDuesAll.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+
+                                return SafeArea(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.all(10.0),
+                                        child: Column(
+                                          children: [
+                                            Card(
+                                              color: const Color(0xE6FFFFFF),
+                                              elevation: 1,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(10.0),
+                                                child: Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: ElevatedButton(
+                                                        onPressed: () => _changeSite('old'),
+                                                        style: ElevatedButton.styleFrom(
+                                                          backgroundColor: _selectedSite == 'old' ? const Color(0xFF4A78B9) : Colors.white,
+                                                          foregroundColor: _selectedSite == 'old' ? Colors.white : const Color(0xFF4A78B9),
+                                                          elevation: _selectedSite == 'old' ? 1 : 0,
+                                                          padding: const EdgeInsets.symmetric(vertical: 4),
+                                                          side: BorderSide(color: const Color(0xFF4A78B9), width: _selectedSite == 'old' ? 0 : 1),
+                                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                        ),
+                                                        child: const FittedBox(child: Text('الموقع القديم', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: ElevatedButton(
+                                                        onPressed: () => _changeSite('new'),
+                                                        style: ElevatedButton.styleFrom(
+                                                          backgroundColor: _selectedSite == 'new' ? const Color(0xFF28A745) : Colors.white,
+                                                          foregroundColor: _selectedSite == 'new' ? Colors.white : const Color(0xFF28A745),
+                                                          elevation: _selectedSite == 'new' ? 1 : 0,
+                                                          padding: const EdgeInsets.symmetric(vertical: 4),
+                                                          side: BorderSide(color: const Color(0xFF28A745), width: _selectedSite == 'new' ? 0 : 1),
+                                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                        ),
+                                                        child: const FittedBox(child: Text('الموقع الجديد', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold))),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+
+                                            Card(
+                                              color: Colors.white,
+                                              elevation: 2,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                                      children: [
+                                                        const Text('عدد العملاء', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Color(0xFF4A78B9), fontWeight: FontWeight.bold)),
+                                                        const SizedBox(height: 2),
+                                                        Text(_toArabicNumbers(currentClients.length.toString()), style: const TextStyle(fontFamily: 'Cairo', fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF0F2A52))),
+                                                      ],
+                                                    ),
+
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                      decoration: BoxDecoration(
+                                                        gradient: const LinearGradient(colors: [Color(0xFFD32F2F), Color(0xFFE53935)]),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.3), blurRadius: 4, offset: const Offset(0, 2))],
+                                                      ),
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                                        children: [
+                                                          const Text('إجمالي المديونية', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
+                                                          const SizedBox(height: 2),
+                                                          Text('${_toArabicNumbers(formattedTotalDues)} ج.م', style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white)),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                const Text('سجل العملاء', style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 14, fontWeight: FontWeight.w900)),
+                                                ElevatedButton.icon(
+                                                  onPressed: _showAddClientDialog,
+                                                  icon: const Icon(Icons.add, color: Colors.white, size: 16),
+                                                  label: const Text('إضافة عميل', style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: const Color(0xFF28A745),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                                    minimumSize: const Size(0, 32),
+                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                          ],
+                                        ),
+                                      ),
+
+                                      Expanded(
+                                        child: GridView.builder(
+                                          physics: const BouncingScrollPhysics(),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 0),
+                                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: 2,
+                                            childAspectRatio: 1.65,
+                                            crossAxisSpacing: 8,
+                                            mainAxisSpacing: 8,
+                                          ),
+                                          itemCount: currentClients.length,
+                                          itemBuilder: (context, index) {
+                                            final client = currentClients[index];
+                                            final double due = client['due'];
+                                            final bool isClear = due <= 0;
+
+                                            String formattedDue = due.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+
+                                            return Card(
+                                              elevation: 1.5,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              child: InkWell(
+                                                onTap: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (context) => ClientDetailsScreen(
+                                                        clientName: client['name'],
+                                                        openingBalance: 0.0,
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                  children: [
+                                                    Container(
+                                                      height: 3,
+                                                      decoration: BoxDecoration(
+                                                        color: isClear ? const Color(0xFF28A745) : const Color(0xFFD32F2F),
+                                                        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                                      ),
+                                                    ),
+                                                    Expanded(
+                                                      child: Padding(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+                                                        child: Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                                          children: [
+                                                            Text(
+                                                              client['name'],
+                                                              style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                            Row(
+                                                              children: [
+                                                                Icon(
+                                                                    Icons.account_balance_wallet_outlined,
+                                                                    size: 13,
+                                                                    color: isClear ? const Color(0xFF28A745) : const Color(0xFFD32F2F)
+                                                                ),
+                                                                const SizedBox(width: 4),
+                                                                const Text(
+                                                                  'المديونية: ',
+                                                                  style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey),
+                                                                ),
+                                                                Expanded(
+                                                                  child: Text(
+                                                                    isClear ? 'خالص' : '${_toArabicNumbers(formattedDue)} ج',
+                                                                    style: TextStyle(
+                                                                        fontFamily: 'Cairo',
+                                                                        fontSize: 12,
+                                                                        fontWeight: FontWeight.w900,
+                                                                        color: isClear ? const Color(0xFF28A745) : const Color(0xFFD32F2F)
+                                                                    ),
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            Row(
+                                                              children: [
+                                                                const Icon(Icons.history, size: 13, color: Colors.grey),
+                                                                const SizedBox(width: 4),
+                                                                Expanded(
+                                                                  child: Text(
+                                                                    'آخر شغل: ${_toArabicNumbers(client['lastJob'])}',
+                                                                    style: TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey.shade700),
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold),
                                 );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-
-                  // 4. سجل العمليات والدفعات للعميل المختار
-                  Card(
-                    color: const Color(0xE6FFFFFF),
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            _selectedClient == null
-                                ? (_isArabic ? 'برجاء اختيار عميل لعرض السجل' : 'Select a client to view records')
-                                : (_isArabic ? 'سجل معاملات: $_selectedClient' : 'Records for: $_selectedClient'),
-                            style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 10),
-
-                          // جلب السجلات المرتبطة بالعميل من فايربيس
-                          _selectedClient == null
-                              ? Container(
-                            padding: const EdgeInsets.symmetric(vertical: 30),
-                            alignment: Alignment.center,
-                            child: const Text('---', style: TextStyle(color: Colors.grey)),
-                          )
-                              : StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance
-                                .collection('daily_entries')
-                                .where('site', isEqualTo: _selectedSite)
-                                .snapshots(),
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData) {
-                                return const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52)));
                               }
-
-                              // تصفية السجلات محلياً للعميل المختار
-                              var docs = snapshot.data!.docs.where((doc) {
-                                var data = doc.data() as Map<String, dynamic>;
-                                List trips = data['clientsTrips'] ?? [];
-                                return trips.any((t) => t['clientName'] == _selectedClient);
-                              }).toList();
-
-                              if (docs.isEmpty) {
-                                return Padding(
-                                  padding: const EdgeInsets.all(20.0),
-                                  child: Center(
-                                    child: Text(
-                                      _isArabic ? 'لا توجد نقلات مسجلة لهذا العميل' : 'No records found for this client',
-                                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.grey),
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              return ListView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: docs.length,
-                                itemBuilder: (context, index) {
-                                  var data = docs[index].data() as Map<String, dynamic>;
-                                  var clientTrip = (data['clientsTrips'] as List).firstWhere((t) => t['clientName'] == _selectedClient);
-
-                                  return Card(
-                                    margin: const EdgeInsets.symmetric(vertical: 4),
-                                    elevation: 1,
-                                    child: ListTile(
-                                      title: Text('${_isArabic ? "التاريخ:" : "Date:"} ${data['dateString']} | ${_isArabic ? "مركبة:" : "Car:"} ${data['vehicleNumber']}', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold)),
-                                      subtitle: Text('${_isArabic ? "السائق:" : "Driver:"} ${data['driverName']} | ${_isArabic ? "النقلات:" : "Trips:"} ${_toArabicNumbers(clientTrip['tripsCount'].toString())}', style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
-                                      trailing: Text('${_toArabicNumbers(clientTrip['totalCubage'].toString())} م³', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Color(0xFF0F2A52), fontSize: 12)),
-                                    ),
-                                  );
-                                },
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+                          );
+                        }
+                    );
+                  }
+              );
+            }
         ),
       ),
     );

@@ -36,6 +36,10 @@ dependencies:
   firebase_auth: ^5.1.2
   google_sign_in: ^6.2.2
   cloud_firestore: ^5.6.12
+  file_picker: ^8.1.2
+  excel: ^4.0.6
+  csv: ^8.0.0
+
 
 dev_dependencies:
   flutter_test:

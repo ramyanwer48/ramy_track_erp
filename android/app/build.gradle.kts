@@ -36,3 +36,10 @@ android {
 flutter {
     source = "../.."
 }
+subprojects {
+    pluginManager.withPlugin("com.android.library") {
+        extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
+            compileSdk = 36
+        }
+    }
+}

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'daily_entry_screen.dart';
-import 'client_accounts_screen.dart'; // تم استيراد شاشة حسابات العملاء
+import 'client_accounts_screen.dart';
+import 'settings_screen.dart';
+import 'settlements_screen.dart'; // <--- تم استيراد شاشة الخصومات والتسويات الجديدة
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -248,7 +250,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ListTile(
                 leading: const Icon(Icons.settings, color: Colors.white),
                 title: const Text('الإعدادات', style: TextStyle(color: Colors.white, fontFamily: 'Cairo')),
-                onTap: () => Navigator.pop(context),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                },
               ),
             ],
           ),
@@ -273,7 +278,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 setState(() => _currentIndex = 4);
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const DailyEntryScreen()));
               }),
-              _buildNavItem(Icons.settings, 'الإعدادات', 5, () => setState(() => _currentIndex = 5)),
+              _buildNavItem(Icons.settings, 'الإعدادات', 5, () {
+                setState(() => _currentIndex = 5);
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+              }),
             ],
           ),
         ),
@@ -282,9 +290,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.only(top: 5),
           child: Column(
             children: [
-              // ==========================================
               // 1. قسم مرحباً بك
-              // ==========================================
               Expanded(
                 flex: 14,
                 child: Container(
@@ -375,9 +381,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              // ==========================================
               // 2. كارت الذكاء الاصطناعي
-              // ==========================================
               Expanded(
                 flex: 9,
                 child: Container(
@@ -424,9 +428,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              // ==========================================
               // 3. شبكة الأقسام
-              // ==========================================
               Expanded(
                 flex: 52,
                 child: Padding(
@@ -440,7 +442,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const DailyEntryScreen()));
                             }),
                             _buildGridCard(context, title: 'البيانات اليومية', icon: Icons.calendar_today, color: Colors.blue, onTap: () {}),
-                            _buildGridCard(context, title: 'الخصومات والتسويات', icon: Icons.local_offer_outlined, color: Colors.orange, onTap: () {}),
+                            // ==========================================
+                            // هنا تم ربط شاشة الخصومات والتسويات بنجاح
+                            // ==========================================
+                            _buildGridCard(context, title: 'الخصومات والتسويات', icon: Icons.local_offer_outlined, color: Colors.orange, onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const SettlementsScreen()));
+                            }),
                           ],
                         ),
                       ),
@@ -448,7 +455,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Expanded(
                         child: Row(
                           children: [
-                            // ربط كارت حسابات العملاء بالشاشة الجديدة
                             _buildGridCard(context, title: 'حسابات العملاء', icon: Icons.people_outline, color: Colors.purple, onTap: () {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const ClientAccountsScreen()));
                             }),
