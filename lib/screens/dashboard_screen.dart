@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'daily_entry_screen.dart';
 import 'client_accounts_screen.dart';
 import 'settings_screen.dart';
-import 'settlements_screen.dart'; // <--- تم استيراد شاشة الخصومات والتسويات الجديدة
+import 'settlements_screen.dart';
+import 'sheikh_mohamed_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -428,9 +430,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              // 3. شبكة الأقسام
+              // 3. كارت حساب الشيخ محمد (تم التعديل لأيقونة التريلا 🚛)
+              const Expanded(
+                flex: 9,
+                child: SheikhMohamedDashboardCard(),
+              ),
+
+              // 4. شبكة الأقسام
               Expanded(
-                flex: 52,
+                flex: 48,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0),
                   child: Column(
@@ -442,9 +450,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const DailyEntryScreen()));
                             }),
                             _buildGridCard(context, title: 'البيانات اليومية', icon: Icons.calendar_today, color: Colors.blue, onTap: () {}),
-                            // ==========================================
-                            // هنا تم ربط شاشة الخصومات والتسويات بنجاح
-                            // ==========================================
                             _buildGridCard(context, title: 'الخصومات والتسويات', icon: Icons.local_offer_outlined, color: Colors.orange, onTap: () {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const SettlementsScreen()));
                             }),
@@ -553,6 +558,127 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ==============================================================
+// كارت حساب الشيخ محمد المستقل
+// ==============================================================
+class SheikhMohamedDashboardCard extends StatelessWidget {
+  const SheikhMohamedDashboardCard({super.key});
+
+  String _toArabicNumbers(String text) {
+    const english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    const arabic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    for (int i = 0; i < english.length; i++) {
+      text = text.replaceAll(english[i], arabic[i]);
+    }
+    return text;
+  }
+
+  String _formatNumber(double amount) {
+    return amount.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('settings').doc('sheikh_settings').snapshots(),
+        builder: (context, settingsSnapshot) {
+          double meterPrice = 22.0;
+          if (settingsSnapshot.hasData && settingsSnapshot.data!.exists) {
+            var data = settingsSnapshot.data!.data() as Map<String, dynamic>?;
+            if (data != null && data.containsKey('tractorRate')) {
+              meterPrice = double.tryParse(data['tractorRate'].toString()) ?? 22.0;
+            }
+          }
+
+          return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('daily_entries').snapshots(),
+              builder: (context, tripsSnapshot) {
+                return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection('settlements').where('type', isEqualTo: 'sheikh_payment').snapshots(),
+                    builder: (context, paymentsSnapshot) {
+
+                      double totalTractorMeters = 0.0;
+                      if (tripsSnapshot.hasData) {
+                        for (var doc in tripsSnapshot.data!.docs) {
+                          var data = doc.data() as Map<String, dynamic>;
+                          String clientName = (data['clientName'] ?? data['client_name'] ?? '').toString().trim();
+                          String carType = (data['carType'] ?? data['vehicleType'] ?? data['type'] ?? '').toString().trim();
+
+                          if ((clientName.contains('بخيت') || clientName.contains('عادل')) && (carType.contains('جرار') || carType.contains('جرارات'))) {
+                            double cubage = double.tryParse(data['totalCubage']?.toString() ?? data['cubage']?.toString() ?? '0') ?? 0.0;
+                            totalTractorMeters += cubage;
+                          }
+                        }
+                      }
+
+                      double totalPayments = 0.0;
+                      if (paymentsSnapshot.hasData) {
+                        for (var doc in paymentsSnapshot.data!.docs) {
+                          var pData = doc.data() as Map<String, dynamic>;
+                          totalPayments += double.tryParse(pData['amount']?.toString() ?? '0') ?? 0.0;
+                        }
+                      }
+
+                      double netRemaining = (totalTractorMeters * meterPrice) - totalPayments;
+                      bool isClear = netRemaining <= 0;
+
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.amber.shade600, width: 1.5),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
+                          ],
+                        ),
+                        child: InkWell(
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SheikhMohamedScreen())),
+                          borderRadius: BorderRadius.circular(15),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(color: Colors.amber.shade50, shape: BoxShape.circle),
+                                  child: const Text('🚛', style: TextStyle(fontSize: 26)),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text('حساب الشيخ محمد', style: TextStyle(color: Color(0xFF0F2A52), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+                                      Text('نسبة الجرارات (الموقع الجديد)', style: TextStyle(color: Colors.grey, fontSize: 10, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text('المتبقي', style: TextStyle(color: isClear ? Colors.green : Colors.red, fontSize: 10, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                    Text('${_toArabicNumbers(_formatNumber(netRemaining))} ج', style: TextStyle(color: isClear ? Colors.green : Colors.red, fontSize: 16, fontWeight: FontWeight.w900, fontFamily: 'Cairo')),
+                                  ],
+                                ),
+                                const SizedBox(width: 5),
+                                const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                );
+              }
+          );
+        }
     );
   }
 }

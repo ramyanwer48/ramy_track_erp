@@ -18,30 +18,9 @@ class ClientDetailsScreen extends StatefulWidget {
 class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // جدول أسعار احتياطي فوري
-  final Map<String, double> _fallbackPrices = {
-    'أحمد سعد': 115.0,
-    'احمد سعد': 115.0,
-    'الأقصي': 125.0,
-    'الاقصي': 125.0,
-    'الرجاء (3)': 115.0,
-    'العماد': 110.0,
-    'شركة السلام': 120.0,
-    'جنيدي': 125.0,
-    'شركة طلعت مصطفي': 120.0,
-    'شركة مصر التشييد والبناء': 120.0,
-    'شركة الغريب': 125.0,
-    'محمود صابر': 120.0,
-    'معتمد': 115.0,
-    'وطنية المدرسة': 125.0,
-    'شركة الغريب (بون رسمي)': 140.0,
-    'سامكريت (خط المواسير)': 100.0,
-    'الرجاء (1-2)': 95.0,
-    'خلاطة مصر التشييد والبناء': 100.0,
-    'خلاطة أبراج': 100.0,
-    'خلاطة السلام': 105.0,
-    'بخيت': 70.0,
-    'عادل': 70.0,
+  final Map<String, Map<String, double>> _fallbackPrices = {
+    'بخيت': {'truck': 70.0, 'tractor': 100.0},
+    'عادل': {'truck': 70.0, 'tractor': 100.0},
   };
 
   @override
@@ -76,6 +55,36 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       text = text.replaceAll(english[i], arabic[i]);
     }
     return text;
+  }
+
+  String _extractAndFormatDate(Map<String, dynamic> item) {
+    try {
+      String rawDate = item['dateString'] ?? item['date'] ?? item['tripDate'] ?? '';
+      if (rawDate.isNotEmpty) {
+        if (rawDate.contains('-')) {
+          var parts = rawDate.split('-');
+          if (parts.length == 3) {
+            return '${_toArabicNumbers(parts[0])}/${_toArabicNumbers(int.parse(parts[1]).toString())}/${_toArabicNumbers(int.parse(parts[2]).toString())}';
+          }
+        } else if (rawDate.contains('/')) {
+          var parts = rawDate.split('/');
+          if (parts.length == 3) {
+            if (parts[0].length == 4) {
+              return '${_toArabicNumbers(parts[0])}/${_toArabicNumbers(int.parse(parts[1]).toString())}/${_toArabicNumbers(int.parse(parts[2]).toString())}';
+            } else {
+              return '${_toArabicNumbers(parts[2])}/${_toArabicNumbers(int.parse(parts[1]).toString())}/${_toArabicNumbers(int.parse(parts[0]).toString())}';
+            }
+          }
+        }
+        return _toArabicNumbers(rawDate);
+      }
+
+      if (item['timestamp'] != null && item['timestamp'] is Timestamp) {
+        DateTime dt = (item['timestamp'] as Timestamp).toDate();
+        return '${_toArabicNumbers(dt.year.toString())}/${_toArabicNumbers(dt.month.toString())}/${_toArabicNumbers(dt.day.toString())}';
+      }
+    } catch (_) {}
+    return 'بدون تاريخ';
   }
 
   String _formatNumber(double amount) {
@@ -185,6 +194,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     String clientCleanName = widget.clientName.trim();
+    String targetNorm = _normalizeArabic(clientCleanName);
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -215,50 +225,41 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
           ),
         ),
 
-        // 1. جلب سعر المتر من إعدادات الفايربيز للمستند مباشرة
+        // 1. جلب الأسعار من إعدادات الفايربيز
         body: StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance.collection('settings').doc(clientCleanName).snapshots(),
             builder: (context, settingsSnapshot) {
-              double clientPrice = 0.0;
+              double truckPrice = 70.0;
+              double tractorPrice = 100.0;
 
               if (settingsSnapshot.hasData && settingsSnapshot.data!.exists) {
                 var data = settingsSnapshot.data!.data() as Map<String, dynamic>?;
                 if (data != null) {
-                  // البحث عن أي حقل يحتوي على السعر
                   for (var entry in data.entries) {
-                    if (entry.key.toLowerCase().contains('price') || entry.key.toLowerCase().contains('سعر')) {
-                      double? parsed = double.tryParse(entry.value.toString());
-                      if (parsed != null && parsed > 0) {
-                        clientPrice = parsed;
-                        break;
-                      }
-                    }
-                  }
-                  // لو ملقاش بمפתח معين، ياخد أول رقم يلاقيه
-                  if (clientPrice == 0.0) {
-                    for (var val in data.values) {
-                      double? parsed = double.tryParse(val.toString());
-                      if (parsed != null && parsed > 0) {
-                        clientPrice = parsed;
-                        break;
+                    String key = entry.key.toLowerCase();
+                    double? val = double.tryParse(entry.value.toString());
+                    if (val != null && val > 0) {
+                      if (key.contains('truck') || key.contains('عربيات') || key.contains('سيارات')) {
+                        truckPrice = val;
+                      } else if (key.contains('tractor') || key.contains('جرار') || key.contains('جرارات')) {
+                        tractorPrice = val;
                       }
                     }
                   }
                 }
               }
 
-              // لو السعر لسه صفر، نجيبه من جدول الأسعار الاحتياطي
-              if (clientPrice == 0.0) {
+              if (truckPrice == 70.0 && tractorPrice == 100.0) {
                 for (var entry in _fallbackPrices.entries) {
-                  if (_normalizeArabic(entry.key) == _normalizeArabic(clientCleanName)) {
-                    clientPrice = entry.value;
+                  if (_normalizeArabic(entry.key) == targetNorm) {
+                    truckPrice = entry.value['truck']!;
+                    tractorPrice = entry.value['tractor']!;
                     break;
                   }
                 }
-                if (clientPrice == 0.0) clientPrice = 115.0;
               }
 
-              // 2. جلب النقلات وفحصها بدقة شاملة
+              // 2. الاستماع اللحظي للبيان اليومي
               return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('daily_entries').snapshots(),
                   builder: (context, tripsSnapshot) {
@@ -268,43 +269,35 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                         stream: FirebaseFirestore.instance.collection('settlements').where('name', isEqualTo: clientCleanName).where('type', isEqualTo: 'client_payment').snapshots(),
                         builder: (context, paymentsSnapshot) {
 
-                          double totalSandMeters = 0.0;
+                          double totalTruckMeters = 0.0;
+                          double totalTractorMeters = 0.0;
                           List<Map<String, dynamic>> clientTrips = [];
-                          String targetNorm = _normalizeArabic(clientCleanName);
 
                           if (tripsSnapshot.hasData) {
                             for (var doc in tripsSnapshot.data!.docs) {
                               var data = doc.data() as Map<String, dynamic>;
 
-                              // فحص المستند الرئيسي
-                              bool docMatches = false;
-                              data.forEach((key, val) {
-                                if (val != null && _normalizeArabic(val.toString()).contains(targetNorm)) {
-                                  docMatches = true;
-                                }
-                              });
+                              // فحص دقيق واحترافي عبر حقل clientNamesList أو المصفوفة الفرعية clientsTrips
+                              List<dynamic> namesList = data['clientNamesList'] ?? [];
+                              bool matchesMain = namesList.any((n) => _normalizeArabic(n.toString()) == targetNorm);
 
-                              if (docMatches) {
-                                clientTrips.add(data);
-                                double cubage = double.tryParse(data['totalCubage']?.toString() ?? data['cubage']?.toString() ?? '0') ?? 0.0;
-                                totalSandMeters += cubage;
-                              }
-                              // فحص القوائم الفرعية لو موجودة (مثل clientStrips)
-                              else if (data.containsKey('clientStrips') && data['clientStrips'] is List) {
-                                for (var strip in data['clientStrips']) {
-                                  if (strip is Map) {
-                                    bool stripMatches = false;
-                                    strip.forEach((key, val) {
-                                      if (val != null && _normalizeArabic(val.toString()).contains(targetNorm)) {
-                                        stripMatches = true;
-                                      }
-                                    });
-                                    if (stripMatches) {
-                                      Map<String, dynamic> combinedTrip = Map<String, dynamic>.from(data);
-                                      combinedTrip.addAll(Map<String, dynamic>.from(strip));
-                                      clientTrips.add(combinedTrip);
-                                      double cubage = double.tryParse(strip['totalCubage']?.toString() ?? strip['cubage']?.toString() ?? data['totalCubage']?.toString() ?? '0') ?? 0.0;
-                                      totalSandMeters += cubage;
+                              List<dynamic> tripsList = data['clientsTrips'] ?? [];
+                              for (var tripItem in tripsList) {
+                                if (tripItem is Map) {
+                                  String tripClientName = tripItem['clientName']?.toString() ?? tripItem['client']?.toString() ?? '';
+                                  if (_normalizeArabic(tripClientName) == targetNorm || matchesMain) {
+                                    // دمج بيانات البيان الرئيسي مع تفاصيل نقلة العميل المحددة
+                                    Map<String, dynamic> combinedTrip = Map<String, dynamic>.from(data);
+                                    combinedTrip.addAll(Map<String, dynamic>.from(tripItem));
+                                    clientTrips.add(combinedTrip);
+
+                                    double cubage = double.tryParse(tripItem['totalCubage']?.toString() ?? tripItem['cubage']?.toString() ?? '0') ?? 0.0;
+
+                                    String detailsStr = '${data['vehicleNumber'] ?? ''} ${data['carType'] ?? ''} ${data['type'] ?? ''}'.toLowerCase();
+                                    if (detailsStr.contains('جرار') || detailsStr.contains('tractor')) {
+                                      totalTractorMeters += cubage;
+                                    } else {
+                                      totalTruckMeters += cubage;
                                     }
                                   }
                                 }
@@ -312,8 +305,8 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                             }
                           }
 
-                          // إجمالي المستحقات = الأمتار × سعر المتر
-                          double newWorkValue = totalSandMeters * clientPrice;
+                          double newWorkValue = (totalTruckMeters * truckPrice) + (totalTractorMeters * tractorPrice);
+                          double totalSandMeters = totalTruckMeters + totalTractorMeters;
 
                           double totalPayments = 0.0;
                           List<Map<String, dynamic>> paymentDetails = [];
@@ -330,7 +323,6 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
 
                           return Column(
                             children: [
-                              // لوحة القيادة العلوية
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: const BoxDecoration(
@@ -341,7 +333,13 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                   children: [
                                     Row(
                                       children: [
-                                        _buildDashboardCard('إجمالي المستحقات', newWorkValue, Colors.amber.shade900, Icons.account_balance_wallet, subtitle: '(سعر المتر: $clientPrice ج)'),
+                                        _buildDashboardCard(
+                                            'إجمالي المستحقات',
+                                            newWorkValue,
+                                            Colors.amber.shade900,
+                                            Icons.account_balance_wallet,
+                                            subtitle: '(عربيات: $truckPrice ج | جرارات: $tractorPrice ج)'
+                                        ),
                                         const SizedBox(width: 8),
                                         _buildDashboardCard('إجمالي الدفعات', totalPayments, Colors.green.shade700, Icons.payments),
                                       ],
@@ -389,12 +387,11 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                 ),
                               ),
 
-                              // التبويبات السفلية
                               Expanded(
                                 child: TabBarView(
                                   controller: _tabController,
                                   children: [
-                                    // 1. سجل النقلات بالترتيب المطلوب
+                                    // 1. سجل النقلات
                                     Column(
                                       children: [
                                         Container(
@@ -411,32 +408,37 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                           child: clientTrips.isEmpty
                                               ? _buildEmptyState(Icons.local_shipping_outlined, 'لم يتم تسجيل أي نقلات بعد')
                                               : ListView.builder(
-                                            padding: const EdgeInsets.all(10),
+                                            key: ValueKey(clientTrips.length),
+                                            padding: const EdgeInsets.all(8),
                                             itemCount: clientTrips.length,
                                             itemBuilder: (context, index) {
                                               var trip = clientTrips[index];
-                                              String dateStr = trip['dateString'] ?? trip['date'] ?? 'تاريخ غير محدد';
+                                              String formattedDate = _extractAndFormatDate(trip);
+
                                               String driver = trip['driverName'] ?? trip['driver'] ?? 'غير محدد';
                                               String carNo = trip['vehicleNumber'] ?? trip['carNumber'] ?? 'بدون رقم';
-                                              String tripsCount = trip['tripsCount']?.toString() ?? '1';
-                                              String cubage = trip['cubage']?.toString() ?? '0'; // تكعيب العربية
-                                              String totalCubage = trip['totalCubage']?.toString() ?? cubage; // الإجمالي الكلي
+                                              String tripsCount = trip['tripsCount']?.toString() ?? trip['trips']?.toString() ?? '1';
+                                              String cubage = trip['cubage']?.toString() ?? '0';
+                                              String totalCubage = trip['totalCubage']?.toString() ?? cubage;
+
+                                              String detailsStr = '$carNo ${trip['carType'] ?? ''} ${trip['type'] ?? ''}'.toLowerCase();
+                                              String vehicleTypeLabel = (detailsStr.contains('جرار') || detailsStr.contains('tractor')) ? 'جرار' : 'عربية';
 
                                               return Card(
-                                                margin: const EdgeInsets.only(bottom: 8),
-                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                margin: const EdgeInsets.only(bottom: 6),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                                                 child: Padding(
-                                                  padding: const EdgeInsets.all(10.0),
-                                                  child: Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          '${_toArabicNumbers(dateStr)} | $driver | عربية: ${_toArabicNumbers(carNo)} | نقلات: ${_toArabicNumbers(tripsCount)} | تكعيب: ${_toArabicNumbers(cubage)} | الإجمالي: ${_toArabicNumbers(totalCubage)}م³',
-                                                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
-                                                        ),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                                  child: Directionality(
+                                                    textDirection: TextDirection.rtl,
+                                                    child: FittedBox(
+                                                      fit: BoxFit.scaleDown,
+                                                      alignment: Alignment.centerRight,
+                                                      child: Text(
+                                                        '$formattedDate  |  $driver  |  $vehicleTypeLabel ${_toArabicNumbers(carNo)}  |  نقلات: ${_toArabicNumbers(tripsCount)}  |  تكعيب: ${_toArabicNumbers(cubage)}  |  الإجمالي: ${_toArabicNumbers(totalCubage)}م³',
+                                                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
                                                       ),
-                                                    ],
+                                                    ),
                                                   ),
                                                 ),
                                               );
@@ -467,12 +469,20 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                               itemCount: paymentDetails.length,
                                               itemBuilder: (context, index) {
                                                 var p = paymentDetails[index];
+                                                String paymentDate = _extractAndFormatDate(p);
+
                                                 return Card(
                                                   margin: const EdgeInsets.only(bottom: 8),
                                                   child: ListTile(
                                                     leading: const CircleAvatar(backgroundColor: Color(0xFF28A745), child: Icon(Icons.attach_money, color: Colors.white, size: 18)),
-                                                    title: Text('المبلغ: ${p['amount']} ج.م', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14)),
-                                                    subtitle: Text('طريقة الدفع: ${p['paymentMethod'] ?? 'كاش'}', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                                                    title: Text('المبلغ: ${_toArabicNumbers(p['amount'].toString())} ج.م', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14)),
+                                                    subtitle: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text('طريقة الدفع: ${p['paymentMethod'] ?? 'كاش'}', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                                                        Text('التاريخ: $paymentDate', style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                                      ],
+                                                    ),
                                                   ),
                                                 );
                                               },
@@ -548,7 +558,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
             ),
             if (subtitle != null) ...[
               const SizedBox(height: 2),
-              Text(subtitle, style: const TextStyle(fontFamily: 'Cairo', fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold)),
+              Text(subtitle, style: const TextStyle(fontFamily: 'Cairo', fontSize: 8.5, color: Colors.grey, fontWeight: FontWeight.bold)),
             ]
           ],
         ),

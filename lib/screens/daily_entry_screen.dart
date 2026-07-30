@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'client_details_screen.dart';
 
 class DailyEntryScreen extends StatefulWidget {
   const DailyEntryScreen({super.key});
@@ -324,8 +325,8 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       List<dynamic> trips = data['clientsTrips'] ?? [];
       for (var t in trips) {
         _clientTrips.add({
-          'client': t['clientName'],
-          'trips': t['tripsCount'],
+          'client': t['clientName'] ?? t['client'],
+          'trips': t['tripsCount'] ?? t['trips'],
           'searchActive': false,
         });
       }
@@ -333,7 +334,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     Navigator.pop(context);
   }
 
-  // ================= الحفظ والتعديل =================
+  // ================= الحفظ والتعديل (مع التزامن اللحظي) =================
   Future<void> _saveEntry() async {
     if (_selectedVehicleNumber == null) {
       _showMessage(_isArabic ? 'برجاء اختيار المركبة أولاً' : 'Select vehicle first', Colors.red.shade700);
@@ -349,6 +350,9 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     }
 
     try {
+      // استخراج أسماء العملاء في مصفوفة رئيسية لضمان قراءتها الفورية في شاشة تفاصيل العميل
+      List<String> clientNamesList = _clientTrips.map((t) => t['client'].toString().trim()).toList();
+
       final entryData = {
         'date': Timestamp.fromDate(_selectedDate),
         'dateString': '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
@@ -358,22 +362,27 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         'typeCode': _typeCode,
         'cubage': _cubage,
         'isTractor': _isTractor,
+        'clientNamesList': clientNamesList, // مصفوفة لضمان التزامن اللحظي الفوري
         'clientsTrips': _clientTrips.map((t) => {
+          'client': t['client'],
           'clientName': t['client'],
+          'trips': t['trips'],
           'tripsCount': t['trips'],
           'totalCubage': t['trips'] * _cubage,
+          'cubage': t['trips'] * _cubage,
         }).toList(),
-        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       };
 
       bool isUpdate = _currentDocId != null;
 
       if (!isUpdate) {
+        entryData['createdAt'] = FieldValue.serverTimestamp();
         DocumentReference docRef = FirebaseFirestore.instance.collection('daily_entries').doc();
         _currentDocId = docRef.id;
-        docRef.set(entryData);
+        await docRef.set(entryData);
       } else {
-        FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).update(entryData);
+        await FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).update(entryData);
       }
 
       setState(() {
@@ -409,7 +418,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     if (!confirm) return;
 
     try {
-      FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).delete();
+      await FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).delete();
 
       setState(() {
         _currentDocId = null;
@@ -493,7 +502,27 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
-          actions: const [SizedBox(width: 48)],
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet, color: Colors.white),
+              tooltip: 'حساب العميل',
+              onPressed: () {
+                if (_clientTrips.isNotEmpty && _clientTrips[0]['client'] != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ClientDetailsScreen(
+                        clientName: _clientTrips[0]['client'],
+                        openingBalance: 0.0,
+                      ),
+                    ),
+                  );
+                } else {
+                  _showMessage(_isArabic ? 'اختر عميل أولاً لعرض حسابه' : 'Select a client first', Colors.orange);
+                }
+              },
+            ),
+          ],
           title: Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,

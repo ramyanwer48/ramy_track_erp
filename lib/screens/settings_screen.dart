@@ -40,6 +40,9 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
   final TextEditingController _adelTruckCtrl = TextEditingController(text: '70');
   final TextEditingController _adelTractorCtrl = TextEditingController(text: '100');
 
+  // كونترولر جديد مخصص للشيخ محمد
+  final TextEditingController _sheikhTractorCtrl = TextEditingController(text: '22');
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +57,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     _bakhitTractorCtrl.dispose();
     _adelTruckCtrl.dispose();
     _adelTractorCtrl.dispose();
+    _sheikhTractorCtrl.dispose();
     for (var controllers in _companiesControllers.values) {
       controllers[0].dispose();
       controllers[1].dispose();
@@ -61,13 +65,12 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     super.dispose();
   }
 
-  // دالة لجلب الأسعار من الفايربيز، ولو مش موجودة تحقنها أوتوماتيك فوراً
+  // دالة لجلب الأسعار من الفايربيز
   Future<void> _initAndLoadSettings() async {
     try {
       var firestore = FirebaseFirestore.instance;
       var snapshot = await firestore.collection('settings').get();
 
-      // لو الكولكشن فاضي تماماً، احقن الأسعار الافتراضية أوتوماتيك في الفايربيز
       if (snapshot.docs.isEmpty) {
         for (var entry in _companiesControllers.entries) {
           await firestore.collection('settings').doc(entry.key).set({
@@ -76,14 +79,22 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
             'officePrice': double.tryParse(entry.value[1].text) ?? 0.0,
           });
         }
+        // حقن إعدادات الشيخ محمد المبدئية
+        await firestore.collection('settings').doc('sheikh_settings').set({
+          'tractorRate': 22.0,
+        });
       } else {
-        // لو موجودة، اسحبها وعرضها في الخانات
         for (var doc in snapshot.docs) {
           var data = doc.data();
           String id = doc.id;
+
           if (_companiesControllers.containsKey(id)) {
             if (data['price'] != null) _companiesControllers[id]![0].text = data['price'].toString();
             if (data['officePrice'] != null) _companiesControllers[id]![1].text = data['officePrice'].toString();
+          }
+
+          if (id == 'sheikh_settings') {
+            if (data['tractorRate'] != null) _sheikhTractorCtrl.text = data['tractorRate'].toString();
           }
         }
       }
@@ -98,6 +109,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
   Future<void> _saveSettingsToFirebase() async {
     try {
       var firestore = FirebaseFirestore.instance;
+
+      // حفظ أسعار الشركات
       for (var entry in _companiesControllers.entries) {
         String companyName = entry.key;
         double clientPrice = double.tryParse(entry.value[0].text) ?? 0.0;
@@ -110,6 +123,13 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }
+
+      // حفظ نسبة الشيخ محمد
+      double sheikhRate = double.tryParse(_sheikhTractorCtrl.text) ?? 22.0;
+      await firestore.collection('settings').doc('sheikh_settings').set({
+        'tractorRate': sheikhRate,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -223,6 +243,28 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                   ListView(
                     padding: const EdgeInsets.all(12),
                     children: [
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12.0, right: 4),
+                        child: Text('الشركاء المستقطعين', style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
+                      ),
+                      // كارت الشيخ محمد
+                      Card(
+                        elevation: 1.5,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('حساب الشيخ محمد', style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
+                              const Divider(),
+                              _buildInputField('نسبة الجرارات (للمتر)', _sheikhTractorCtrl, Icons.local_shipping),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       const Padding(
                         padding: EdgeInsets.only(bottom: 12.0, right: 4),
                         child: Text('أسعار عملاء الموقع الجديد', style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
