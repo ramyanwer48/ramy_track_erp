@@ -52,7 +52,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   ];
 
   // ==========================================
-  // قاعدة بيانات العملاء
+  // قاعدة بيانات العملاء (تستخدم للبحث)
   // ==========================================
   final List<String> _oldSiteClients = [
     'أحمد سعد', 'الأقصي', 'الرجاء (3)', 'العماد', 'شركة السلام', 'جنيدي',
@@ -62,6 +62,53 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   ];
   final List<String> _newSiteClients = ['بخيت', 'عادل'];
 
+  // ==========================================
+  // الذاكرة الاحتياطية للأسعار (لضمان عدم ظهور صفر بالخطأ)
+  // ==========================================
+  final Map<String, double> _oldGlobalsDefaults = {
+    'سعر سائقين الشركة': 40.0,
+    'اللودر': 15.0,
+    'سعر م٣ خصم الجودة': 60.0,
+  };
+  final Map<String, double> _newGlobalsDefaults = {
+    'سعر سائقين الشركة': 34.0,
+    'اللودر': 15.0,
+    'سعر م٣ خصم الجودة': 60.0,
+    'نسبة الشيخ محمد ابو حسين في الجرارات': 22.0,
+    'حساب المكتب عربيات (بعربيات الشركة)': 28.0,
+    'حساب المكتب عربيات (بعربيات المكتب)': 64.0,
+    'حساب المكتب في الجرارات': 53.0,
+  };
+
+  final Map<String, Map<String, double>> _oldClientsDefaults = {
+    'أحمد سعد': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
+    'الأقصي': {'سعر العميل': 125.0, 'سعر المكتب': 115.0},
+    'الرجاء (3)': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
+    'العماد': {'سعر العميل': 110.0, 'سعر المكتب': 100.0},
+    'شركة السلام': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
+    'جنيدي': {'سعر العميل': 125.0, 'سعر المكتب': 115.0},
+    'شركة طلعت مصطفي': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
+    'شركة مصر التشييد والبناء': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
+    'شركة الغريب': {'سعر العميل': 126.0, 'سعر المكتب': 115.0},
+    'محمود صابر': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
+    'معتمد': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
+    'وطنية المدرسة': {'سعر العميل': 125.0, 'سعر المكتب': 110.0},
+    'شركة الغريب (بون رسمي)': {'سعر العميل': 140.0, 'سعر المكتب': 0.0},
+    'سامكريت (خط المواسير)': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
+    'الرجاء (1-2)': {'سعر العميل': 95.0, 'سعر المكتب': 0.0},
+    'خلاطة مصر التشييد والبناء': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
+    'خلاطة أبراج': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
+    'خلاطة السلام': {'سعر العميل': 105.0, 'سعر المكتب': 0.0},
+  };
+
+  final Map<String, Map<String, double>> _newClientsDefaults = {
+    'بخيت': {'عربيات': 70.0, 'جرارات': 100.0},
+    'عادل': {'عربيات': 70.0, 'جرارات': 100.0},
+  };
+
+  // ==========================================
+  // المتغيرات اللي سقطت سهواً وتسببت في الخطأ
+  // ==========================================
   String? _selectedVehicleNumber;
   String _driverName = '---';
   String _driverType = '---';
@@ -69,22 +116,22 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   double _cubage = 0.0;
   bool _isTractor = false;
 
-  // ================= دالة الرسائل في الأسفل =================
-  void _showMessage(String message, Color color, {Duration duration = const Duration(milliseconds: 1500)}) {
+  // ================= دالة الرسائل بعد التعديل (تظهر بالأسفل تماماً) =================
+  void _showMessage(String message, Color color, {Duration duration = const Duration(milliseconds: 1500), bool isLong = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-            message,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Cairo', color: Colors.white)
+          message,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Cairo', color: Colors.white),
+          textAlign: TextAlign.center,
         ),
         backgroundColor: color,
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        duration: isLong ? const Duration(seconds: 4) : duration,
+        behavior: SnackBarBehavior.fixed, // تجعلها لازقة في أسفل الشاشة تماماً
+        elevation: 0,
       ),
     );
   }
@@ -95,7 +142,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     }
   }
 
-  // ================= دوال التاريخ وتحويل الأرقام =================
+  // ================= دوال التاريخ وتحويل الأرقام والفلترة =================
   String _toArabicNumbers(String text) {
     if (!_isArabic) return text;
     const english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -104,6 +151,19 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       text = text.replaceAll(english[i], arabic[i]);
     }
     return text;
+  }
+
+  String _normalizeArabic(String? text) {
+    if (text == null || text.isEmpty) return '';
+    return text
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ى', 'ي')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .toLowerCase();
   }
 
   Widget _buildFormattedDate() {
@@ -148,7 +208,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     }
   }
 
-  // ================= تغيير الموقع =================
   void _changeSite(String site) {
     if (_selectedSite == site && _currentDocId != null) {
       if (!_isReadOnly) {
@@ -334,7 +393,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     Navigator.pop(context);
   }
 
-  // ================= الحفظ والتعديل (مع التزامن اللحظي) =================
+  // ================= الحفظ والتعديل (الدمج الآلي وتجميد الأسعار) =================
   Future<void> _saveEntry() async {
     if (_selectedVehicleNumber == null) {
       _showMessage(_isArabic ? 'برجاء اختيار المركبة أولاً' : 'Select vehicle first', Colors.red.shade700);
@@ -344,37 +403,176 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       _showMessage(_isArabic ? 'برجاء إضافة عميل واحد على الأقل' : 'Add at least one client', Colors.red.shade700);
       return;
     }
-    if (_clientTrips.any((trip) => trip['client'] == null || trip['client'].toString().isEmpty)) {
+    if (_clientTrips.any((trip) => trip['client'] == null || trip['client'].toString().trim().isEmpty)) {
       _showMessage(_isArabic ? 'برجاء اختيار أسماء جميع العملاء في الجدول' : 'Select all client names', Colors.red.shade700);
       return;
     }
 
     try {
-      // استخراج أسماء العملاء في مصفوفة رئيسية لضمان قراءتها الفورية في شاشة تفاصيل العميل
-      List<String> clientNamesList = _clientTrips.map((t) => t['client'].toString().trim()).toList();
+      String globalsDoc = _selectedSite == 'old' ? 'old_site_globals' : 'new_site_globals';
+      String clientsDoc = _selectedSite == 'old' ? 'old_site_clients' : 'new_site_clients';
 
+      var globalsSnap = await FirebaseFirestore.instance.collection('settings').doc(globalsDoc).get();
+      var clientsSnap = await FirebaseFirestore.instance.collection('settings').doc(clientsDoc).get();
+
+      Map<String, dynamic> globalsData = globalsSnap.exists && globalsSnap.data() != null ? globalsSnap.data()! : {};
+      Map<String, dynamic> clientsData = clientsSnap.exists && clientsSnap.data() != null ? clientsSnap.data()! : {};
+
+      bool hasZeroPrice = false;
+
+      // دالة مساعدة لضمان إحضار الثابت سواء من الفايربيز أو الذاكرة الاحتياطية
+      double getGlobalValue(String key, bool isOldSite) {
+        if (globalsData.containsKey(key)) {
+          return double.tryParse(globalsData[key].toString()) ?? 0.0;
+        }
+        return (isOldSite ? _oldGlobalsDefaults[key] : _newGlobalsDefaults[key]) ?? 0.0;
+      }
+
+      // تجميد الثوابت
+      Map<String, dynamic> globalSnapshots = {
+        'companyDriverPrice': getGlobalValue('سعر سائقين الشركة', _selectedSite == 'old'),
+        'loaderPrice': getGlobalValue('اللودر', _selectedSite == 'old'),
+        'qualityDiscount': getGlobalValue('سعر م٣ خصم الجودة', _selectedSite == 'old'),
+      };
+
+      if (_selectedSite == 'new') {
+        globalSnapshots['sheikhMohamedTractors'] = getGlobalValue('نسبة الشيخ محمد ابو حسين في الجرارات', false);
+        globalSnapshots['officeTrucksCompany'] = getGlobalValue('حساب المكتب عربيات (بعربيات الشركة)', false);
+        globalSnapshots['officeTrucksOffice'] = getGlobalValue('حساب المكتب عربيات (بعربيات المكتب)', false);
+        globalSnapshots['officeTractors'] = getGlobalValue('حساب المكتب في الجرارات', false);
+      }
+
+      // تجميد أسعار العملاء
+      List<String> clientNamesList = [];
+      List<Map<String, dynamic>> finalTrips = [];
+
+      for (var t in _clientTrips) {
+        String rawName = t['client'].toString().trim();
+        String safeKey = _normalizeArabic(rawName);
+
+        clientNamesList.add(rawName);
+
+        double clientPrice = 0.0;
+        double officePrice = 0.0;
+
+        // 1. البحث في الفايربيز
+        String? matchedDbKey;
+        if (clientsData.isNotEmpty) {
+          if (clientsData.containsKey(safeKey)) {
+            matchedDbKey = safeKey;
+          } else {
+            try {
+              matchedDbKey = clientsData.keys.firstWhere((k) => _normalizeArabic(k) == safeKey);
+            } catch (e) {
+              matchedDbKey = null;
+            }
+          }
+        }
+
+        if (matchedDbKey != null) {
+          var cData = clientsData[matchedDbKey] as Map<String, dynamic>;
+          if (_selectedSite == 'old') {
+            clientPrice = double.tryParse(cData['سعر العميل']?.toString() ?? '0') ?? 0.0;
+            officePrice = double.tryParse(cData['سعر المكتب']?.toString() ?? '0') ?? 0.0;
+          } else {
+            clientPrice = _isTractor
+                ? (double.tryParse(cData['جرارات']?.toString() ?? '0') ?? 0.0)
+                : (double.tryParse(cData['عربيات']?.toString() ?? '0') ?? 0.0);
+          }
+        } else {
+          // 2. الفايربيز فاضي (أو العميل مش فيه) -> نستدعي الذاكرة الاحتياطية فوراً
+          Map<String, Map<String, double>> defaultsMap = _selectedSite == 'old' ? _oldClientsDefaults : _newClientsDefaults;
+          String? matchedDefKey;
+          try {
+            matchedDefKey = defaultsMap.keys.firstWhere((k) => _normalizeArabic(k) == safeKey);
+          } catch (e) {
+            matchedDefKey = null;
+          }
+
+          if (matchedDefKey != null) {
+            var cData = defaultsMap[matchedDefKey]!;
+            if (_selectedSite == 'old') {
+              clientPrice = cData['سعر العميل'] ?? 0.0;
+              officePrice = cData['سعر المكتب'] ?? 0.0;
+            } else {
+              clientPrice = _isTractor ? (cData['جرارات'] ?? 0.0) : (cData['عربيات'] ?? 0.0);
+            }
+          }
+        }
+
+        // لو بعد الفايربيز وبعد الذاكرة الاحتياطية السعر فضل صفر فعلياً
+        if (clientPrice == 0.0) {
+          hasZeroPrice = true;
+        }
+
+        finalTrips.add({
+          'client': rawName,
+          'clientName': rawName,
+          'trips': t['trips'],
+          'tripsCount': t['trips'],
+          'totalCubage': t['trips'] * _cubage,
+          'cubage': t['trips'] * _cubage,
+          'clientPriceSnapshot': clientPrice,
+          'officePriceSnapshot': officePrice,
+        });
+      }
+
+      String dateStringFormatted = '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}';
+      bool isUpdate = _currentDocId != null;
+
+      // ================= التجميع الآلي (Auto-Merge) لمنع التكرار =================
+      if (!isUpdate) {
+        // البحث عن وثيقة لنفس المركبة في نفس الموقع في نفس اليوم
+        var existingDocs = await FirebaseFirestore.instance.collection('daily_entries')
+            .where('site', isEqualTo: _selectedSite)
+            .where('dateString', isEqualTo: dateStringFormatted)
+            .where('vehicleNumber', isEqualTo: _selectedVehicleNumber)
+            .get();
+
+        if (existingDocs.docs.isNotEmpty) {
+          // دمج النقلات الجديدة مع القديمة في نفس الوثيقة
+          isUpdate = true;
+          _currentDocId = existingDocs.docs.first.id;
+          var existingData = existingDocs.docs.first.data();
+          List<dynamic> existingTrips = existingData['clientsTrips'] ?? [];
+
+          for (var newT in finalTrips) {
+            String safeNewClient = _normalizeArabic(newT['clientName']);
+            int matchIndex = existingTrips.indexWhere((t) => _normalizeArabic(t['clientName']) == safeNewClient);
+
+            if (matchIndex >= 0) {
+              // العميل موجود: اجمع العدد والتكعيب
+              existingTrips[matchIndex]['trips'] = (existingTrips[matchIndex]['trips'] ?? 0) + newT['trips'];
+              existingTrips[matchIndex]['tripsCount'] = (existingTrips[matchIndex]['tripsCount'] ?? 0) + newT['tripsCount'];
+              existingTrips[matchIndex]['totalCubage'] = (existingTrips[matchIndex]['totalCubage'] ?? 0.0) + newT['totalCubage'];
+              existingTrips[matchIndex]['cubage'] = (existingTrips[matchIndex]['cubage'] ?? 0.0) + newT['cubage'];
+              // تحديث السعر لو اختلف
+              existingTrips[matchIndex]['clientPriceSnapshot'] = newT['clientPriceSnapshot'];
+            } else {
+              // العميل جديد على الوثيقة دي
+              existingTrips.add(newT);
+            }
+          }
+          finalTrips = List<Map<String, dynamic>>.from(existingTrips);
+          clientNamesList = finalTrips.map((t) => t['clientName'].toString()).toList();
+        }
+      }
+
+      // الحفظ النهائي في الفايربيز
       final entryData = {
         'date': Timestamp.fromDate(_selectedDate),
-        'dateString': '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
+        'dateString': dateStringFormatted,
         'site': _selectedSite,
         'vehicleNumber': _selectedVehicleNumber,
         'driverName': _driverName,
         'typeCode': _typeCode,
         'cubage': _cubage,
         'isTractor': _isTractor,
-        'clientNamesList': clientNamesList, // مصفوفة لضمان التزامن اللحظي الفوري
-        'clientsTrips': _clientTrips.map((t) => {
-          'client': t['client'],
-          'clientName': t['client'],
-          'trips': t['trips'],
-          'tripsCount': t['trips'],
-          'totalCubage': t['trips'] * _cubage,
-          'cubage': t['trips'] * _cubage,
-        }).toList(),
+        'clientNamesList': clientNamesList,
+        'clientsTrips': finalTrips,
+        'snapshotGlobals': globalSnapshots,
         'updatedAt': FieldValue.serverTimestamp(),
       };
-
-      bool isUpdate = _currentDocId != null;
 
       if (!isUpdate) {
         entryData['createdAt'] = FieldValue.serverTimestamp();
@@ -389,10 +587,15 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         _isReadOnly = true;
       });
 
-      if (isUpdate) {
-        _showMessage(_isArabic ? 'تم تعديل وحفظ البيان بنجاح' : 'Entry updated and saved successfully', const Color(0xFF28A745));
+      // الرسائل بناءً على الشرط المطلوب حصراً (بالأسفل تماماً)
+      if (hasZeroPrice) {
+        _showMessage(
+            'تم حفظ البيان بنجاح (تنبيه: يوجد عميل مسجل بسعر صفر)',
+            Colors.orange.shade800,
+            isLong: true
+        );
       } else {
-        _showMessage(_isArabic ? 'تم حفظ البيان بنجاح!' : 'Entry Saved!', const Color(0xFF28A745));
+        _showMessage('تم حفظ البيان بنجاح', const Color(0xFF28A745));
       }
 
     } catch (e) {

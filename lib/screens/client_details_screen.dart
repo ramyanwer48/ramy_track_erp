@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:excel/excel.dart' hide Border;
 
 class ClientDetailsScreen extends StatefulWidget {
   final String clientName;
@@ -17,16 +25,16 @@ class ClientDetailsScreen extends StatefulWidget {
 
 class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-
-  final Map<String, Map<String, double>> _fallbackPrices = {
-    'بخيت': {'truck': 70.0, 'tractor': 100.0},
-    'عادل': {'truck': 70.0, 'tractor': 100.0},
-  };
+  final List<String> _paymentMethods = ['كاش', 'فودافون كاش', 'إنستاباي', 'تحويل بنكي', 'شيك بنكي'];
+  final List<String> _newSystemClients = ['بخيت', 'عادل'];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -57,6 +65,11 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
     return text;
   }
 
+  String _formatCubage(double amount) {
+    String result = amount == 0.0 ? '0' : (amount % 1 == 0 ? amount.toInt().toString() : amount.toStringAsFixed(1));
+    return _toArabicNumbers(result);
+  }
+
   String _extractAndFormatDate(Map<String, dynamic> item) {
     try {
       String rawDate = item['dateString'] ?? item['date'] ?? item['tripDate'] ?? '';
@@ -78,7 +91,6 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
         }
         return _toArabicNumbers(rawDate);
       }
-
       if (item['timestamp'] != null && item['timestamp'] is Timestamp) {
         DateTime dt = (item['timestamp'] as Timestamp).toDate();
         return '${_toArabicNumbers(dt.year.toString())}/${_toArabicNumbers(dt.month.toString())}/${_toArabicNumbers(dt.day.toString())}';
@@ -89,59 +101,6 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
 
   String _formatNumber(double amount) {
     return amount.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
-  }
-
-  Future<void> _confirmAndDeleteClient() async {
-    bool? confirmDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
-              SizedBox(width: 8),
-              Text('تحذير خطير بالحذف!', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.red, fontSize: 16)),
-            ],
-          ),
-          content: Text('هل أنت متأكد تماماً من حذف العميل (${widget.clientName}) وكل سجلاته المالية؟ هذا الإجراء نهائي ولا يمكن التراجع عنه.', style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('تراجع', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('تأكيد الحذف النهائي', style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmDelete == true) {
-      try {
-        var clientQuery = await FirebaseFirestore.instance.collection('clients').where('name', isEqualTo: widget.clientName).get();
-        for (var doc in clientQuery.docs) {
-          await FirebaseFirestore.instance.collection('clients').doc(doc.id).delete();
-        }
-
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تم حذف العميل بنجاح تام', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)), backgroundColor: Colors.red),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطأ أثناء الحذف: $e', style: const TextStyle(fontFamily: 'Cairo'))),
-          );
-        }
-      }
-    }
   }
 
   void _showAddClientAccessDialog() {
@@ -161,7 +120,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('أدخل بريد العميل. سيتمكن من الدخول للمشاهدة فقط.', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.grey)),
+              const Text('أدخل إيميل العميل ليتمكن من الدخول للمشاهدة فقط.', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, color: Colors.grey)),
               const SizedBox(height: 16),
               TextField(
                 decoration: InputDecoration(
@@ -178,10 +137,10 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الإرسال بنجاح!', style: TextStyle(fontFamily: 'Cairo'))));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الإرسال بنجاح!', style: TextStyle(fontFamily: 'Cairo')), backgroundColor: Colors.green));
               },
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF28A745)),
-              child: const Text('إرسال دعوة', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+              child: const Text('إرسال دعوة', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white)),
             ),
           ],
         ),
@@ -189,12 +148,306 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
     );
   }
 
-  void _showExportMenu() { Navigator.pop(context); }
+  Future<void> _uploadArchiveFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'xlsx', 'xls', 'doc', 'docx', 'jpg', 'png'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        String fileName = result.files.single.name;
+        File file = File(result.files.single.path!);
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري رفع الملف... برجاء الانتظار', style: TextStyle(fontFamily: 'Cairo'))));
+
+        Reference ref = FirebaseStorage.instance.ref().child('archives/${widget.clientName}/$fileName');
+        UploadTask uploadTask = ref.putFile(file);
+        TaskSnapshot snapshot = await uploadTask;
+        String downloadUrl = await snapshot.ref.getDownloadURL();
+
+        await FirebaseFirestore.instance.collection('client_archives').add({
+          'clientName': widget.clientName,
+          'fileName': fileName,
+          'fileUrl': downloadUrl,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفع الملف بنجاح!', style: TextStyle(fontFamily: 'Cairo')), backgroundColor: Colors.green));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ: ${e.toString()}', style: const TextStyle(fontFamily: 'Cairo')), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _deleteArchiveFile(String docId, String fileUrl) async {
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تأكيد الحذف', style: TextStyle(fontFamily: 'Cairo', color: Colors.red, fontWeight: FontWeight.bold)),
+          content: const Text('هل أنت متأكد من حذف هذا الملف من الأرشيف نهائياً؟', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حذف', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await FirebaseFirestore.instance.collection('client_archives').doc(docId).delete();
+        if (fileUrl.isNotEmpty) {
+          try {
+            Reference ref = FirebaseStorage.instance.refFromURL(fileUrl);
+            await ref.delete();
+          } catch (_) {}
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الملف بنجاح', style: TextStyle(fontFamily: 'Cairo')), backgroundColor: Colors.red));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء الحذف: $e')));
+        }
+      }
+    }
+  }
+
+  Future<void> _launchURL(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا يمكن فتح الرابط', style: TextStyle(fontFamily: 'Cairo'))));
+    }
+  }
+
+  void _showExportOptions(List<Map<String, dynamic>> trips) {
+    if (trips.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا يوجد نقلات لتصديرها', style: TextStyle(fontFamily: 'Cairo')), backgroundColor: Colors.red));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('اختر صيغة التصدير', style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold)),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.table_chart, color: Colors.green, size: 30),
+                title: const Text('تصدير كملف Excel', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                onTap: () { Navigator.pop(ctx); _exportToExcel(trips); },
+              ),
+              ListTile(
+                leading: const Icon(Icons.description, color: Colors.blue, size: 30),
+                title: const Text('تصدير كملف Word', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                onTap: () { Navigator.pop(ctx); _exportToWord(trips); },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportToExcel(List<Map<String, dynamic>> trips) async {
+    try {
+      var excel = Excel.createExcel();
+      String defaultSheet = excel.getDefaultSheet() ?? 'Sheet1';
+      excel.rename(defaultSheet, 'سجل النقلات');
+      Sheet sheetObject = excel['سجل النقلات'];
+      excel.setDefaultSheet('سجل النقلات');
+
+      sheetObject.appendRow([
+        TextCellValue('التاريخ'),
+        TextCellValue('السائق'),
+        TextCellValue('نوع المركبة'),
+        TextCellValue('رقم المركبة'),
+        TextCellValue('عدد النقلات'),
+        TextCellValue('تكعيب العربية'),
+        TextCellValue('إجمالي أمتار الرمل'),
+      ]);
+
+      double totalSandMetersSum = 0.0;
+
+      for (var trip in trips) {
+        String date = _extractAndFormatDate(trip);
+        String driver = trip['driverName'] ?? trip['driver'] ?? 'غير محدد';
+        bool isTractor = trip['isTractor'] == true || '${trip['vehicleNumber']} ${trip['carType']}'.toLowerCase().contains('جرار');
+        String vehicleType = isTractor ? 'جرار' : 'عربية';
+        String carNo = trip['vehicleNumber'] ?? trip['carNumber'] ?? '';
+
+        int count = int.tryParse(trip['tripsCount']?.toString() ?? '1') ?? 1;
+        double cubage = double.tryParse(trip['cubage']?.toString() ?? trip['totalCubage']?.toString() ?? '0') ?? 0.0;
+        double totalTripSand = double.tryParse(trip['totalCubage']?.toString() ?? (count * cubage).toString()) ?? (count * cubage);
+
+        totalSandMetersSum += totalTripSand;
+
+        sheetObject.appendRow([
+          TextCellValue(date),
+          TextCellValue(driver),
+          TextCellValue(vehicleType),
+          TextCellValue(carNo),
+          TextCellValue(count.toString()),
+          TextCellValue(cubage.toStringAsFixed(1)),
+          TextCellValue(totalTripSand.toStringAsFixed(1)),
+        ]);
+      }
+
+      sheetObject.appendRow([
+        TextCellValue('الإجمالي الكلي'),
+        TextCellValue(''),
+        TextCellValue(''),
+        TextCellValue(''),
+        TextCellValue(''),
+        TextCellValue(''),
+        TextCellValue('${totalSandMetersSum.toStringAsFixed(1)} م³'),
+      ]);
+
+      var fileBytes = excel.save();
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/سجل_نقلات_${widget.clientName}.xlsx';
+
+      File(path)..createSync(recursive: true)..writeAsBytesSync(fileBytes!);
+      await Share.shareXFiles([XFile(path)], text: 'مرفق سجل النقلات للعميل: ${widget.clientName}');
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء تصدير الإكسيل: $e')));
+    }
+  }
+
+  Future<void> _exportToWord(List<Map<String, dynamic>> trips) async {
+    try {
+      String htmlContent = """
+      <html dir="rtl" lang="ar">
+      <head><meta charset="utf-8"><style>body{font-family:Tahoma;} table{width:100%; border-collapse:collapse;} th,td{border:1px solid #ddd; padding:8px; text-align:center;} th{background-color:#0F2A52; color:white;}</style></head>
+      <body>
+      <h2>سجل نقلات العميل: ${widget.clientName}</h2>
+      <table>
+        <tr><th>التاريخ</th><th>السائق</th><th>نوع المركبة</th><th>رقم المركبة</th><th>عدد النقلات</th><th>تكعيب العربية</th><th>إجمالي أمتار الرمل</th></tr>
+      """;
+
+      double totalSandMetersSum = 0.0;
+
+      for (var trip in trips) {
+        String date = _extractAndFormatDate(trip);
+        String driver = trip['driverName'] ?? trip['driver'] ?? 'غير محدد';
+        bool isTractor = trip['isTractor'] == true || '${trip['vehicleNumber']} ${trip['carType']}'.toLowerCase().contains('جرار');
+        String vehicleType = isTractor ? 'جرار' : 'عربية';
+        String carNo = trip['vehicleNumber'] ?? trip['carNumber'] ?? '';
+        int count = int.tryParse(trip['tripsCount']?.toString() ?? '1') ?? 1;
+        double cubage = double.tryParse(trip['cubage']?.toString() ?? trip['totalCubage']?.toString() ?? '0') ?? 0.0;
+        double totalTripSand = double.tryParse(trip['totalCubage']?.toString() ?? (count * cubage).toString()) ?? (count * cubage);
+
+        totalSandMetersSum += totalTripSand;
+
+        htmlContent += "<tr><td>$date</td><td>$driver</td><td>$vehicleType</td><td>$carNo</td><td>$count</td><td>$cubage</td><td>$totalTripSand</td></tr>";
+      }
+
+      htmlContent += "<tr style='font-weight:bold; background-color:#f1f1f1;'><td colspan='6'>الإجمالي الكلي لأمتار الرمل</td><td>$totalSandMetersSum م³</td></tr>";
+      htmlContent += "</table></body></html>";
+
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/سجل_نقلات_${widget.clientName}.doc';
+      final file = File(path);
+      await file.writeAsString(htmlContent);
+
+      await Share.shareXFiles([XFile(path)], text: 'مرفق تقرير Word لنقلات العميل: ${widget.clientName}');
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء تصدير Word: $e')));
+    }
+  }
+
+  Future<void> _deletePayment(String docId) async {
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تأكيد الحذف', style: TextStyle(fontFamily: 'Cairo', color: Colors.red, fontWeight: FontWeight.bold)),
+          content: const Text('هل أنت متأكد من حذف هذه الدفعة نهائياً؟', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حذف', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirm == true) {
+      await FirebaseFirestore.instance.collection('settlements').doc(docId).delete();
+    }
+  }
+
+  Future<void> _editPayment(String docId, Map<String, dynamic> currentData) async {
+    TextEditingController amountCtrl = TextEditingController(text: currentData['amount'].toString());
+    String selectedMethod = currentData['paymentMethod'] ?? 'كاش';
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: StatefulBuilder(
+          builder: (ctx, setStateDialog) => AlertDialog(
+            title: const Text('تعديل الدفعة', style: TextStyle(fontFamily: 'Cairo')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ', border: OutlineInputBorder())),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _paymentMethods.contains(selectedMethod) ? selectedMethod : 'كاش',
+                  decoration: const InputDecoration(labelText: 'طريقة الدفع', border: OutlineInputBorder()),
+                  items: _paymentMethods.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+                  onChanged: (val) => setStateDialog(() => selectedMethod = val!),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                onPressed: () async {
+                  double newAmount = double.tryParse(amountCtrl.text) ?? 0.0;
+                  await FirebaseFirestore.instance.collection('settlements').doc(docId).update({'amount': newAmount, 'paymentMethod': selectedMethod});
+                  if (mounted) Navigator.pop(ctx);
+                },
+                child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     String clientCleanName = widget.clientName.trim();
     String targetNorm = _normalizeArabic(clientCleanName);
+    bool isNewSystem = _newSystemClients.any((c) => _normalizeArabic(c) == targetNorm);
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -206,29 +459,69 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
           centerTitle: true,
           elevation: 0,
           leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
+
           actions: [
-            IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), tooltip: 'حذف العميل', onPressed: _confirmAndDeleteClient),
-            IconButton(icon: const Icon(Icons.person_add_alt_1, color: Colors.white), tooltip: 'إضافة صلاحية', onPressed: _showAddClientAccessDialog),
-            IconButton(icon: const Icon(Icons.ios_share, color: Colors.white), tooltip: 'تصدير', onPressed: _showExportMenu),
+            if (_tabController.index != 2)
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('daily_entries').snapshots(),
+                builder: (ctx, tripsSnap) {
+                  List<Map<String, dynamic>> currentTrips = [];
+                  if (tripsSnap.hasData) {
+                    for (var doc in tripsSnap.data!.docs) {
+                      var data = doc.data() as Map<String, dynamic>;
+                      List<dynamic> namesList = data['clientNamesList'] ?? [];
+                      bool matchesMain = namesList.any((n) => _normalizeArabic(n.toString()) == targetNorm);
+                      List<dynamic> tripsList = data['clientsTrips'] ?? [];
+                      for (var tripItem in tripsList) {
+                        if (tripItem is Map) {
+                          String tripClientName = tripItem['clientName']?.toString() ?? tripItem['client']?.toString() ?? '';
+                          if (_normalizeArabic(tripClientName) == targetNorm || matchesMain) {
+                            Map<String, dynamic> combinedTrip = Map<String, dynamic>.from(data);
+                            combinedTrip.addAll(Map<String, dynamic>.from(tripItem));
+                            currentTrips.add(combinedTrip);
+                          }
+                        }
+                      }
+                    }
+                  }
+                  return IconButton(
+                      icon: const Icon(Icons.ios_share, color: Colors.white),
+                      tooltip: 'تصدير',
+                      onPressed: () => _showExportOptions(currentTrips)
+                  );
+                },
+              ),
           ],
-          bottom: TabBar(
-            controller: _tabController,
-            labelColor: const Color(0xFF00D2FF),
-            unselectedLabelColor: Colors.white70,
-            indicatorWeight: 3,
-            labelStyle: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
-            tabs: const [
-              Tab(text: 'سجل النقلات', icon: Icon(Icons.local_shipping, size: 18)),
-              Tab(text: 'سجل الدفعات', icon: Icon(Icons.payments_outlined, size: 18)),
-              Tab(text: 'الأرشيف المرفق', icon: Icon(Icons.folder_zip, size: 18)),
-            ],
+
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(48),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('client_archives').where('clientName', isEqualTo: clientCleanName).snapshots(),
+              builder: (context, archiveSnap) {
+                int archiveCount = archiveSnap.hasData ? archiveSnap.data!.docs.length : 0;
+                String archiveLabel = archiveCount > 0 ? 'الأرشيف ($archiveCount)' : 'الأرشيف المرفق';
+
+                return TabBar(
+                  controller: _tabController,
+                  labelColor: const Color(0xFF00D2FF),
+                  unselectedLabelColor: Colors.white70,
+                  indicatorWeight: 3,
+                  labelStyle: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 12),
+                  tabs: [
+                    const Tab(text: 'سجل النقلات', icon: Icon(Icons.local_shipping, size: 18)),
+                    const Tab(text: 'سجل الدفعات', icon: Icon(Icons.payments_outlined, size: 18)),
+                    Tab(text: archiveLabel, icon: const Icon(Icons.folder_zip, size: 18)),
+                  ],
+                );
+              },
+            ),
           ),
         ),
 
-        // 1. جلب الأسعار من إعدادات الفايربيز
         body: StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance.collection('settings').doc(clientCleanName).snapshots(),
             builder: (context, settingsSnapshot) {
+              double clientSpecificPrice = 70.0;
               double truckPrice = 70.0;
               double tractorPrice = 100.0;
 
@@ -246,38 +539,30 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                       }
                     }
                   }
-                }
-              }
-
-              if (truckPrice == 70.0 && tractorPrice == 100.0) {
-                for (var entry in _fallbackPrices.entries) {
-                  if (_normalizeArabic(entry.key) == targetNorm) {
-                    truckPrice = entry.value['truck']!;
-                    tractorPrice = entry.value['tractor']!;
-                    break;
+                  // سحب سعر العميل المخصص للموقع القديم من حقل اسم العميل مباشرة في وثيقة settings
+                  if (data[clientCleanName] != null) {
+                    double? sp = double.tryParse(data[clientCleanName].toString());
+                    if (sp != null && sp > 0) clientSpecificPrice = sp;
                   }
                 }
               }
 
-              // 2. الاستماع اللحظي للبيان اليومي
               return StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('daily_entries').snapshots(),
                   builder: (context, tripsSnapshot) {
 
-                    // 3. جلب الدفعات
                     return StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance.collection('settlements').where('name', isEqualTo: clientCleanName).where('type', isEqualTo: 'client_payment').snapshots(),
                         builder: (context, paymentsSnapshot) {
 
                           double totalTruckMeters = 0.0;
                           double totalTractorMeters = 0.0;
+                          double totalOldMeters = 0.0;
                           List<Map<String, dynamic>> clientTrips = [];
 
                           if (tripsSnapshot.hasData) {
                             for (var doc in tripsSnapshot.data!.docs) {
                               var data = doc.data() as Map<String, dynamic>;
-
-                              // فحص دقيق واحترافي عبر حقل clientNamesList أو المصفوفة الفرعية clientsTrips
                               List<dynamic> namesList = data['clientNamesList'] ?? [];
                               bool matchesMain = namesList.any((n) => _normalizeArabic(n.toString()) == targetNorm);
 
@@ -286,18 +571,30 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                 if (tripItem is Map) {
                                   String tripClientName = tripItem['clientName']?.toString() ?? tripItem['client']?.toString() ?? '';
                                   if (_normalizeArabic(tripClientName) == targetNorm || matchesMain) {
-                                    // دمج بيانات البيان الرئيسي مع تفاصيل نقلة العميل المحددة
                                     Map<String, dynamic> combinedTrip = Map<String, dynamic>.from(data);
                                     combinedTrip.addAll(Map<String, dynamic>.from(tripItem));
                                     clientTrips.add(combinedTrip);
 
                                     double cubage = double.tryParse(tripItem['totalCubage']?.toString() ?? tripItem['cubage']?.toString() ?? '0') ?? 0.0;
 
-                                    String detailsStr = '${data['vehicleNumber'] ?? ''} ${data['carType'] ?? ''} ${data['type'] ?? ''}'.toLowerCase();
-                                    if (detailsStr.contains('جرار') || detailsStr.contains('tractor')) {
-                                      totalTractorMeters += cubage;
+                                    bool isTractor = false;
+                                    if (data['isTractor'] == true || tripItem['isTractor'] == true) {
+                                      isTractor = true;
                                     } else {
-                                      totalTruckMeters += cubage;
+                                      String detailsStr = '${data['vehicleNumber'] ?? ''} ${data['carType'] ?? ''} ${data['type'] ?? ''}'.toLowerCase();
+                                      if (detailsStr.contains('جرار') || detailsStr.contains('tractor')) {
+                                        isTractor = true;
+                                      }
+                                    }
+
+                                    if (isNewSystem) {
+                                      if (isTractor) {
+                                        totalTractorMeters += cubage;
+                                      } else {
+                                        totalTruckMeters += cubage;
+                                      }
+                                    } else {
+                                      totalOldMeters += cubage;
                                     }
                                   }
                                 }
@@ -305,21 +602,23 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                             }
                           }
 
-                          double newWorkValue = (totalTruckMeters * truckPrice) + (totalTractorMeters * tractorPrice);
-                          double totalSandMeters = totalTruckMeters + totalTractorMeters;
+                          // حساب المستحقات: الشركات القديمة تأخذ سعرها المخصص من الإعدادات، والجديدة تفصل عربيات وجرارات
+                          double newWorkValue = isNewSystem
+                              ? (totalTruckMeters * truckPrice) + (totalTractorMeters * tractorPrice)
+                              : (totalOldMeters * clientSpecificPrice);
 
                           double totalPayments = 0.0;
                           List<Map<String, dynamic>> paymentDetails = [];
                           if (paymentsSnapshot.hasData) {
                             for (var doc in paymentsSnapshot.data!.docs) {
                               var pData = doc.data() as Map<String, dynamic>;
+                              pData['docId'] = doc.id;
                               paymentDetails.add(pData);
                               totalPayments += double.tryParse(pData['amount']?.toString() ?? '0') ?? 0.0;
                             }
                           }
 
                           double netRemaining = newWorkValue - totalPayments;
-                          bool isClear = netRemaining <= 0;
 
                           return Column(
                             children: [
@@ -331,57 +630,120 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                 ),
                                 child: Column(
                                   children: [
-                                    Row(
-                                      children: [
-                                        _buildDashboardCard(
-                                            'إجمالي المستحقات',
-                                            newWorkValue,
-                                            Colors.amber.shade900,
-                                            Icons.account_balance_wallet,
-                                            subtitle: '(عربيات: $truckPrice ج | جرارات: $tractorPrice ج)'
-                                        ),
-                                        const SizedBox(width: 8),
-                                        _buildDashboardCard('إجمالي الدفعات', totalPayments, Colors.green.shade700, Icons.payments),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Container(
-                                            padding: const EdgeInsets.all(10),
-                                            decoration: BoxDecoration(
-                                              color: isClear ? Colors.green.shade50 : Colors.red.shade50,
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: isClear ? Colors.green.shade700 : Colors.red.shade700, width: 1.5),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Icon(Icons.warning_amber_rounded, size: 16, color: isClear ? Colors.green.shade700 : Colors.red.shade700),
-                                                    const SizedBox(width: 4),
-                                                    Text('المديونية المتبقية', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: isClear ? Colors.green.shade700 : Colors.red.shade700)),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  '${_toArabicNumbers(_formatNumber(netRemaining))} ج.م',
-                                                  style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.w900, color: isClear ? Colors.green.shade700 : Colors.red.shade700),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                const Text(
-                                                  'الحساب صافي ولايف من الفايربيز',
-                                                  style: TextStyle(fontFamily: 'Cairo', fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold),
-                                                ),
-                                              ],
+                                    IntrinsicHeight(
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                                        children: [
+                                          Expanded(
+                                            child: _buildDashboardCard(
+                                              'إجمالي المستحقات',
+                                              newWorkValue,
+                                              Colors.amber.shade900,
+                                              Icons.account_balance_wallet,
+                                              subtitle: isNewSystem ? '(عربيات: $truckPrice ج | جرارات: $tractorPrice ج)' : '(سعر الشركة: $clientSpecificPrice ج)',
                                             ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        _buildDashboardCard('إجمالي أمتار الرمل', totalSandMeters, const Color(0xFF4A78B9), Icons.layers, suffix: ' م³'),
-                                      ],
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: _buildDashboardCard(
+                                              'إجمالي الدفعات',
+                                              totalPayments,
+                                              Colors.green.shade700,
+                                              Icons.payments,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    IntrinsicHeight(
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                                        children: [
+                                          Expanded(
+                                            child: Container(
+                                              padding: const EdgeInsets.all(10),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red.shade50,
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(color: Colors.red.shade700, width: 1.5),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Icon(Icons.warning_amber_rounded, size: 16, color: Colors.red.shade700),
+                                                      const SizedBox(width: 4),
+                                                      Text('المديونية المتبقية', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red.shade700)),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  FittedBox(
+                                                    child: Text(
+                                                      '${_toArabicNumbers(_formatNumber(netRemaining))} ج.م',
+                                                      style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.w900, color: Colors.red.shade700),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.shade50,
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(color: Colors.blue.shade700, width: 1.5),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: isNewSystem ? [
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Row(children: [
+                                                        Icon(Icons.airport_shuttle, size: 14, color: Colors.blue.shade700),
+                                                        const SizedBox(width: 4),
+                                                        Text('عربيات:', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue.shade700)),
+                                                      ]),
+                                                      Text('${_formatCubage(totalTruckMeters)} م³', style: TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.w900, color: Colors.blue.shade900)),
+                                                    ],
+                                                  ),
+                                                  const Divider(height: 12, thickness: 1),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Row(children: [
+                                                        Icon(Icons.local_shipping, size: 14, color: Colors.orange.shade800),
+                                                        const SizedBox(width: 4),
+                                                        Text('جرارات:', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
+                                                      ]),
+                                                      Text('${_formatCubage(totalTractorMeters)} م³', style: TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.w900, color: Colors.orange.shade900)),
+                                                    ],
+                                                  ),
+                                                ] : [
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Row(children: [
+                                                        Icon(Icons.layers, size: 14, color: Colors.blue.shade700),
+                                                        const SizedBox(width: 4),
+                                                        Text('إجمالي الأمتار:', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue.shade700)),
+                                                      ]),
+                                                      Text('${_formatCubage(totalOldMeters)} م³', style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.w900, color: Colors.blue.shade900)),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -421,24 +783,42 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                               String cubage = trip['cubage']?.toString() ?? '0';
                                               String totalCubage = trip['totalCubage']?.toString() ?? cubage;
 
-                                              String detailsStr = '$carNo ${trip['carType'] ?? ''} ${trip['type'] ?? ''}'.toLowerCase();
-                                              String vehicleTypeLabel = (detailsStr.contains('جرار') || detailsStr.contains('tractor')) ? 'جرار' : 'عربية';
+                                              bool isTractor = false;
+                                              if (trip['isTractor'] == true) {
+                                                isTractor = true;
+                                              } else {
+                                                String detailsStr = '${trip['vehicleNumber'] ?? ''} ${trip['carType'] ?? ''} ${trip['type'] ?? ''}'.toLowerCase();
+                                                if (detailsStr.contains('جرار') || detailsStr.contains('tractor')) {
+                                                  isTractor = true;
+                                                }
+                                              }
+
+                                              String vehicleTypeLabel = isTractor ? 'جرار' : 'عربية';
+                                              Color cardColor = isTractor ? Colors.orange.shade50 : Colors.blue.shade50;
+                                              Color borderColor = isTractor ? Colors.orange.shade300 : Colors.blue.shade300;
+                                              IconData vIcon = isTractor ? Icons.local_shipping : Icons.airport_shuttle;
 
                                               return Card(
+                                                color: cardColor,
                                                 margin: const EdgeInsets.only(bottom: 6),
-                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6), side: BorderSide(color: borderColor, width: 1)),
                                                 child: Padding(
                                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                                  child: Directionality(
-                                                    textDirection: TextDirection.rtl,
-                                                    child: FittedBox(
-                                                      fit: BoxFit.scaleDown,
-                                                      alignment: Alignment.centerRight,
-                                                      child: Text(
-                                                        '$formattedDate  |  $driver  |  $vehicleTypeLabel ${_toArabicNumbers(carNo)}  |  نقلات: ${_toArabicNumbers(tripsCount)}  |  تكعيب: ${_toArabicNumbers(cubage)}  |  الإجمالي: ${_toArabicNumbers(totalCubage)}م³',
-                                                        style: const TextStyle(fontFamily: 'Cairo', fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(vIcon, color: borderColor.withValues(alpha: 0.8), size: 20),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                        child: FittedBox(
+                                                          fit: BoxFit.scaleDown,
+                                                          alignment: Alignment.centerRight,
+                                                          child: Text(
+                                                            '$formattedDate  |  $driver  |  $vehicleTypeLabel ${_toArabicNumbers(carNo)}  |  نقلات: ${_toArabicNumbers(tripsCount)}  |  تكعيب: ${_toArabicNumbers(cubage)}  |  الإجمالي: ${_toArabicNumbers(totalCubage)}م³',
+                                                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
+                                                          ),
+                                                        ),
                                                       ),
-                                                    ),
+                                                    ],
                                                   ),
                                                 ),
                                               );
@@ -473,6 +853,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
 
                                                 return Card(
                                                   margin: const EdgeInsets.only(bottom: 8),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.green.shade200)),
                                                   child: ListTile(
                                                     leading: const CircleAvatar(backgroundColor: Color(0xFF28A745), child: Icon(Icons.attach_money, color: Colors.white, size: 18)),
                                                     title: Text('المبلغ: ${_toArabicNumbers(p['amount'].toString())} ج.م', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14)),
@@ -481,6 +862,13 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                                       children: [
                                                         Text('طريقة الدفع: ${p['paymentMethod'] ?? 'كاش'}', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
                                                         Text('التاريخ: $paymentDate', style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                                      ],
+                                                    ),
+                                                    trailing: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        IconButton(icon: Icon(Icons.edit, color: Colors.blue.shade700, size: 20), onPressed: () => _editPayment(p['docId'], p)),
+                                                        IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => _deletePayment(p['docId'])),
                                                       ],
                                                     ),
                                                   ),
@@ -492,15 +880,62 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                     ),
 
                                     // 3. الأرشيف المرفق
-                                    Center(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(Icons.folder_zip, size: 60, color: Colors.grey),
-                                          const SizedBox(height: 16),
-                                          const Text('أرشيف العميل', style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
-                                        ],
-                                      ),
+                                    Column(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          width: double.infinity,
+                                          color: Colors.white,
+                                          child: ElevatedButton.icon(
+                                            onPressed: _uploadArchiveFile,
+                                            icon: const Icon(Icons.upload_file, color: Colors.white),
+                                            label: const Text('رفع ملف للأرشيف', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white)),
+                                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F2A52)),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: StreamBuilder<QuerySnapshot>(
+                                              stream: FirebaseFirestore.instance.collection('client_archives').where('clientName', isEqualTo: clientCleanName).snapshots(),
+                                              builder: (ctx, snapshot) {
+                                                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                                                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildEmptyState(Icons.folder_off, 'لا يوجد ملفات في الأرشيف');
+
+                                                return ListView.builder(
+                                                    padding: const EdgeInsets.all(10),
+                                                    itemCount: snapshot.data!.docs.length,
+                                                    itemBuilder: (ctx, index) {
+                                                      var doc = snapshot.data!.docs[index];
+                                                      var docData = doc.data() as Map<String, dynamic>;
+                                                      String docId = doc.id;
+                                                      String fileUrl = docData['fileUrl'] ?? '';
+
+                                                      return Card(
+                                                        child: ListTile(
+                                                          leading: const Icon(Icons.picture_as_pdf, color: Colors.redAccent),
+                                                          title: Text(docData['fileName'] ?? 'ملف بدون اسم', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12)),
+                                                          trailing: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              IconButton(
+                                                                icon: const Icon(Icons.download, color: Colors.blue),
+                                                                tooltip: 'تحميل',
+                                                                onPressed: () => _launchURL(fileUrl),
+                                                              ),
+                                                              IconButton(
+                                                                icon: const Icon(Icons.delete, color: Colors.red),
+                                                                tooltip: 'حذف',
+                                                                onPressed: () => _deleteArchiveFile(docId, fileUrl),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }
+                                                );
+                                              }
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -530,38 +965,37 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
     );
   }
 
-  Widget _buildDashboardCard(String title, double amount, Color color, IconData icon, {String suffix = '', String? subtitle}) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.3), width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 16, color: color),
-                const SizedBox(width: 4),
-                Text(title, style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: color)),
-              ],
+  Widget _buildDashboardCard(String title, double amount, Color color, IconData icon, {String? subtitle}) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 4),
+              Text(title, style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            child: Text(
+              '${_toArabicNumbers(_formatNumber(amount))} ج.م',
+              style: TextStyle(fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.w900, color: color),
             ),
-            const SizedBox(height: 6),
-            FittedBox(
-              child: Text(
-                '${_toArabicNumbers(_formatNumber(amount))}$suffix',
-                style: TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.w900, color: color),
-              ),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(subtitle, style: const TextStyle(fontFamily: 'Cairo', fontSize: 8.5, color: Colors.grey, fontWeight: FontWeight.bold)),
-            ]
-          ],
-        ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(subtitle, style: const TextStyle(fontFamily: 'Cairo', fontSize: 8.5, color: Colors.grey, fontWeight: FontWeight.bold)),
+          ]
+        ],
       ),
     );
   }

@@ -10,185 +10,376 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  bool _isLocked = true;
-  bool _isLoading = true;
 
-  // أسعار الشركات الافتراضية
-  final Map<String, List<TextEditingController>> _companiesControllers = {
-    'أحمد سعد': [TextEditingController(text: '115'), TextEditingController(text: '105')],
-    'الأقصي': [TextEditingController(text: '125'), TextEditingController(text: '115')],
-    'الرجاء (3)': [TextEditingController(text: '115'), TextEditingController(text: '105')],
-    'العماد': [TextEditingController(text: '110'), TextEditingController(text: '100')],
-    'شركة السلام': [TextEditingController(text: '120'), TextEditingController(text: '110')],
-    'جنيدي': [TextEditingController(text: '125'), TextEditingController(text: '115')],
-    'شركة طلعت مصطفي': [TextEditingController(text: '120'), TextEditingController(text: '110')],
-    'شركة مصر التشييد والبناء': [TextEditingController(text: '120'), TextEditingController(text: '110')],
-    'شركة الغريب': [TextEditingController(text: '125'), TextEditingController(text: '115')],
-    'محمود صابر': [TextEditingController(text: '120'), TextEditingController(text: '110')],
-    'معتمد': [TextEditingController(text: '115'), TextEditingController(text: '105')],
-    'وطنية المدرسة': [TextEditingController(text: '125'), TextEditingController(text: '110')],
-    'شركة الغريب (بون رسمي)': [TextEditingController(text: '140'), TextEditingController(text: '0')],
-    'سامكريت (خط المواسير)': [TextEditingController(text: '100'), TextEditingController(text: '0')],
-    'الرجاء (1-2)': [TextEditingController(text: '95'), TextEditingController(text: '0')],
-    'خلاطة مصر التشييد والبناء': [TextEditingController(text: '100'), TextEditingController(text: '0')],
-    'خلاطة أبراج': [TextEditingController(text: '100'), TextEditingController(text: '0')],
-    'خلاطة السلام': [TextEditingController(text: '105'), TextEditingController(text: '0')],
+  // =========================================================================
+  // 1. الفلتر الحديدي (لضمان تطابق الأسماء 100% ومنع أي ثغرة في الهمزات والحروف)
+  // =========================================================================
+  String _normalizeArabic(String text) {
+    if (text.isEmpty) return '';
+    return text
+        .replaceAll('أ', 'ا')
+        .replaceAll('إ', 'ا')
+        .replaceAll('آ', 'ا')
+        .replaceAll('ة', 'ه')
+        .replaceAll('ى', 'ي')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .toLowerCase();
+  }
+
+  // =========================================================================
+  // 2. تفريغ بيانات ملفات الـ PDF كقيم افتراضية ثابتة بالمفاتيح المفلترة
+  // =========================================================================
+
+  // ثوابت الموقع القديم
+  final Map<String, double> _oldGlobals = {
+    'سعر سائقين الشركة': 40.0,
+    'اللودر': 15.0,
+    'سعر م٣ خصم الجودة': 60.0,
   };
 
-  final TextEditingController _bakhitTruckCtrl = TextEditingController(text: '70');
-  final TextEditingController _bakhitTractorCtrl = TextEditingController(text: '100');
-  final TextEditingController _adelTruckCtrl = TextEditingController(text: '70');
-  final TextEditingController _adelTractorCtrl = TextEditingController(text: '100');
+  // عملاء الموقع القديم (18 عميل) - المفاتيح مفلترة مسبقاً لضمان عدم وجود ثغرات
+  final Map<String, Map<String, double>> _oldClients = {
+    'احمد سعد': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
+    'الاقصي': {'سعر العميل': 125.0, 'سعر المكتب': 115.0},
+    'الرجاء (3)': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
+    'العماد': {'سعر العميل': 110.0, 'سعر المكتب': 100.0},
+    'شركه السلام': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
+    'جنيدي': {'سعر العميل': 125.0, 'سعر المكتب': 115.0},
+    'شركه طلعت مصطفي': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
+    'شركه مصر التشييد والبناء': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
+    'شركه الغريب': {'سعر العميل': 125.0, 'سعر المكتب': 115.0},
+    'محمود صابر': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
+    'معتمد': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
+    'وطنيه المدرسه': {'سعر العميل': 125.0, 'سعر المكتب': 110.0},
+    'شركه الغريب ( بون رسمي)': {'سعر العميل': 140.0, 'سعر المكتب': 0.0},
+    'سامكريت (خط المواسير)': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
+    'الرجاء (1-2)': {'سعر العميل': 95.0, 'سعر المكتب': 0.0},
+    'خلاطه مصر التشييد والبناء': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
+    'خلاطه ابراج': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
+    'خلاطه السلام': {'سعر العميل': 105.0, 'سعر المكتب': 0.0},
+  };
 
-  // كونترولر جديد مخصص للشيخ محمد
-  final TextEditingController _sheikhTractorCtrl = TextEditingController(text: '22');
+  // ثوابت الموقع الجديد
+  final Map<String, double> _newGlobals = {
+    'سعر سائقين الشركة': 34.0,
+    'اللودر': 15.0,
+    'سعر م٣ خصم الجودة': 60.0,
+    'نسبة الشيخ محمد ابو حسين في الجرارات': 22.0,
+    'حساب المكتب عربيات (بعربيات الشركة)': 28.0,
+    'حساب المكتب عربيات (بعربيات المكتب)': 64.0,
+    'حساب المكتب في الجرارات': 53.0,
+  };
+
+  // عملاء الموقع الجديد
+  final Map<String, Map<String, double>> _newClients = {
+    'بخيت': {'عربيات': 70.0, 'جرارات': 100.0},
+    'عادل': {'عربيات': 70.0, 'جرارات': 100.0},
+  };
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _initAndLoadSettings();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _bakhitTruckCtrl.dispose();
-    _bakhitTractorCtrl.dispose();
-    _adelTruckCtrl.dispose();
-    _adelTractorCtrl.dispose();
-    _sheikhTractorCtrl.dispose();
-    for (var controllers in _companiesControllers.values) {
-      controllers[0].dispose();
-      controllers[1].dispose();
-    }
     super.dispose();
   }
 
-  // دالة لجلب الأسعار من الفايربيز
-  Future<void> _initAndLoadSettings() async {
-    try {
-      var firestore = FirebaseFirestore.instance;
-      var snapshot = await firestore.collection('settings').get();
+  // =========================================================================
+  // 3. دوال التعديل والإضافة والحذف في الفايربيز
+  // =========================================================================
 
-      if (snapshot.docs.isEmpty) {
-        for (var entry in _companiesControllers.entries) {
-          await firestore.collection('settings').doc(entry.key).set({
-            'clientName': entry.key,
-            'price': double.tryParse(entry.value[0].text) ?? 0.0,
-            'officePrice': double.tryParse(entry.value[1].text) ?? 0.0,
-          });
-        }
-        // حقن إعدادات الشيخ محمد المبدئية
-        await firestore.collection('settings').doc('sheikh_settings').set({
-          'tractorRate': 22.0,
-        });
-      } else {
-        for (var doc in snapshot.docs) {
-          var data = doc.data();
-          String id = doc.id;
+  Future<void> _editGlobalValue(String docName, String fieldKey, double currentValue) async {
+    TextEditingController controller = TextEditingController(text: currentValue.toString());
 
-          if (_companiesControllers.containsKey(id)) {
-            if (data['price'] != null) _companiesControllers[id]![0].text = data['price'].toString();
-            if (data['officePrice'] != null) _companiesControllers[id]![1].text = data['officePrice'].toString();
-          }
-
-          if (id == 'sheikh_settings') {
-            if (data['tractorRate'] != null) _sheikhTractorCtrl.text = data['tractorRate'].toString();
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint("Error loading settings: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  // حفظ التعديلات في الفايربيز
-  Future<void> _saveSettingsToFirebase() async {
-    try {
-      var firestore = FirebaseFirestore.instance;
-
-      // حفظ أسعار الشركات
-      for (var entry in _companiesControllers.entries) {
-        String companyName = entry.key;
-        double clientPrice = double.tryParse(entry.value[0].text) ?? 0.0;
-        double officePrice = double.tryParse(entry.value[1].text) ?? 0.0;
-
-        await firestore.collection('settings').doc(companyName).set({
-          'clientName': companyName,
-          'price': clientPrice,
-          'officePrice': officePrice,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-
-      // حفظ نسبة الشيخ محمد
-      double sheikhRate = double.tryParse(_sheikhTractorCtrl.text) ?? 22.0;
-      await firestore.collection('settings').doc('sheikh_settings').set({
-        'tractorRate': sheikhRate,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم حفظ وتحديث الأسعار في قاعدة البيانات بنجاح!', style: TextStyle(fontFamily: 'Cairo')),
-            backgroundColor: Color(0xFF28A745),
+    await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('تعديل: $fieldKey', style: const TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.bold)),
+          content: TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'القيمة الجديدة', border: OutlineInputBorder()),
           ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ أثناء الحفظ: $e', style: const TextStyle(fontFamily: 'Cairo')), backgroundColor: Colors.red),
-        );
-      }
-    }
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () async {
+                double? newVal = double.tryParse(controller.text);
+                if (newVal != null) {
+                  await FirebaseFirestore.instance.collection('settings').doc(docName).set({
+                    fieldKey: newVal,
+                  }, SetOptions(merge: true));
+                  if (mounted) Navigator.pop(ctx);
+                }
+              },
+              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+            )
+          ],
+        ),
+      ),
+    );
   }
 
-  void _toggleLock() async {
-    if (_isLocked) {
-      setState(() => _isLocked = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم فتح الإعدادات. يمكنك تعديل الأسعار الآن.', style: TextStyle(fontFamily: 'Cairo')),
-          backgroundColor: Color(0xFF28A745),
+  Future<void> _editClientPrice(String docName, String clientKey, String priceType, double currentValue) async {
+    TextEditingController controller = TextEditingController(text: currentValue.toString());
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('تعديل $priceType لـ ($clientKey)', style: const TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.bold)),
+          content: TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'السعر الجديد', border: OutlineInputBorder()),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () async {
+                double? newVal = double.tryParse(controller.text);
+                if (newVal != null) {
+                  await FirebaseFirestore.instance.collection('settings').doc(docName).set({
+                    clientKey: {priceType: newVal},
+                  }, SetOptions(merge: true));
+                  if (mounted) Navigator.pop(ctx);
+                }
+              },
+              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+            )
+          ],
         ),
-      );
-    } else {
-      await _saveSettingsToFirebase();
-      setState(() => _isLocked = true);
-    }
+      ),
+    );
+  }
+
+  Future<void> _addNewClient(String docName, bool isOldSite) async {
+    TextEditingController nameCtrl = TextEditingController();
+    TextEditingController price1Ctrl = TextEditingController();
+    TextEditingController price2Ctrl = TextEditingController();
+
+    String label1 = isOldSite ? 'سعر العميل' : 'عربيات';
+    String label2 = isOldSite ? 'سعر المكتب' : 'جرارات';
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('إضافة تسعيرة عميل جديد', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'اسم العميل')),
+              const SizedBox(height: 8),
+              TextField(controller: price1Ctrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: label1)),
+              const SizedBox(height: 8),
+              TextField(controller: price2Ctrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: label2)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F2A52)),
+              onPressed: () async {
+                String rawName = nameCtrl.text.trim();
+                // هنا بنطبق الفلتر الحديدي على الاسم الجديد قبل ما نسيفه!
+                String safeKey = _normalizeArabic(rawName);
+
+                double? p1 = double.tryParse(price1Ctrl.text);
+                double? p2 = double.tryParse(price2Ctrl.text);
+
+                if (safeKey.isNotEmpty && p1 != null && p2 != null) {
+                  await FirebaseFirestore.instance.collection('settings').doc(docName).set({
+                    safeKey: {label1: p1, label2: p2}
+                  }, SetOptions(merge: true));
+                  if (mounted) Navigator.pop(ctx);
+                }
+              },
+              child: const Text('إضافة', style: TextStyle(color: Colors.white)),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // =========================================================================
+  // 4. بناء الواجهة (Widgets)
+  // =========================================================================
+
+  Widget _buildGlobalsSection(String title, String docName, Map<String, double> defaults) {
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('settings').doc(docName).snapshots(),
+        builder: (context, snapshot) {
+          Map<String, dynamic> dbData = {};
+          if (snapshot.hasData && snapshot.data!.exists && snapshot.data!.data() != null) {
+            dbData = snapshot.data!.data() as Map<String, dynamic>;
+          }
+
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF0F2A52),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                  child: Text(title, style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+                ...defaults.keys.map((key) {
+                  double val = dbData.containsKey(key) ? (double.tryParse(dbData[key].toString()) ?? defaults[key]!) : defaults[key]!;
+
+                  return Container(
+                    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+                    child: ListTile(
+                      dense: true,
+                      title: Text(key, style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('$val ج.م', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 14)),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.edit_square, color: Colors.blueAccent, size: 22),
+                            onPressed: () => _editGlobalValue(docName, key, val),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          );
+        }
+    );
+  }
+
+  Widget _buildClientsSection(String title, String docName, Map<String, Map<String, double>> defaults, bool isOldSite) {
+    return StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('settings').doc(docName).snapshots(),
+        builder: (context, snapshot) {
+          Map<String, dynamic> dbData = {};
+          if (snapshot.hasData && snapshot.data!.exists && snapshot.data!.data() != null) {
+            dbData = snapshot.data!.data() as Map<String, dynamic>;
+          }
+
+          // دمج العملاء الافتراضيين مع العملاء الجداد اللي اليوزر ضافهم من التطبيق
+          Map<String, Map<String, dynamic>> allClients = {};
+
+          // 1. حط الافتراضي الأول
+          defaults.forEach((key, value) {
+            allClients[key] = value;
+          });
+
+          // 2. ضيف أو حدّث من الداتابيز (عشان لو اليوزر ضاف عميل جديد يظهر)
+          dbData.forEach((key, value) {
+            if (value is Map) {
+              allClients[key] = Map<String, dynamic>.from(value);
+            }
+          });
+
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE65100),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(title, style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15)),
+                      IconButton(
+                        icon: const Icon(Icons.add_circle, color: Colors.white, size: 26),
+                        tooltip: 'إضافة تسعيرة عميل',
+                        onPressed: () => _addNewClient(docName, isOldSite),
+                      )
+                    ],
+                  ),
+                ),
+                ...allClients.entries.map((clientEntry) {
+                  String clientKey = clientEntry.key; // ده الاسم المفلتر
+                  Map<String, dynamic> prices = clientEntry.value;
+
+                  return Container(
+                    decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('● $clientKey', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0F2A52))),
+                        const SizedBox(height: 6),
+                        ...prices.keys.map((priceType) {
+                          double val = double.tryParse(prices[priceType]?.toString() ?? '0') ?? 0.0;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 16.0, bottom: 4.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('- $priceType:', style: const TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+                                Row(
+                                  children: [
+                                    Text('$val ج.م', style: const TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.w900, color: Colors.black87)),
+                                    const SizedBox(width: 8),
+                                    InkWell(
+                                      onTap: () => _editClientPrice(docName, clientKey, priceType, val),
+                                      child: const Icon(Icons.edit, color: Colors.orange, size: 20),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          );
+        }
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF4F6F9),
-        appBar: AppBar(title: const Text('إعدادات النظام والتسعير', style: TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold)), backgroundColor: const Color(0xFF0F2A52)),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F6F9),
         appBar: AppBar(
-          title: const Text('إعدادات النظام والتسعير', style: TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+          title: const Text('إعدادات الأسعار الشاملة', style: TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
           backgroundColor: const Color(0xFF0F2A52),
           centerTitle: true,
+          elevation: 0,
           leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
-          actions: [
-            IconButton(
-              icon: Icon(_isLocked ? Icons.lock : Icons.lock_open, color: _isLocked ? Colors.redAccent : Colors.greenAccent, size: 28),
-              tooltip: _isLocked ? 'فتح القفل للتعديل' : 'حفظ وقفل',
-              onPressed: _toggleLock,
-            ),
-          ],
           bottom: TabBar(
             controller: _tabController,
             labelColor: const Color(0xFF00D2FF),
@@ -196,165 +387,33 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
             indicatorWeight: 3,
             labelStyle: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
             tabs: const [
-              Tab(text: 'الموقع القديم', icon: Icon(Icons.location_on, size: 18)),
-              Tab(text: 'الموقع الجديد', icon: Icon(Icons.add_location_alt, size: 18)),
+              Tab(text: 'الموقع القديم', icon: Icon(Icons.location_city, size: 20)),
+              Tab(text: 'الموقع الجديد', icon: Icon(Icons.fiber_new_rounded, size: 20)),
             ],
           ),
         ),
-        body: Column(
+        body: TabBarView(
+          controller: _tabController,
           children: [
-            Container(
-              color: Colors.amber.shade100,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.amber, size: 20),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'تنبيه: يتم مزامنة الأسعار وحفظها أوتوماتيكياً في الفايربيز.',
-                      style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 12.0, right: 4),
-                        child: Text('حسابات الشركات (18 شركة)', style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
-                      ),
-                      ..._companiesControllers.entries.map((entry) {
-                        int index = _companiesControllers.keys.toList().indexOf(entry.key) + 1;
-                        return _buildCompanyCard(
-                          companyName: '$index. ${entry.key}',
-                          clientCtrl: entry.value[0],
-                          officeCtrl: entry.value[1],
-                        );
-                      }),
-                    ],
-                  ),
-                  ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 12.0, right: 4),
-                        child: Text('الشركاء المستقطعين', style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
-                      ),
-                      // كارت الشيخ محمد
-                      Card(
-                        elevation: 1.5,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('حساب الشيخ محمد', style: TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
-                              const Divider(),
-                              _buildInputField('نسبة الجرارات (للمتر)', _sheikhTractorCtrl, Icons.local_shipping),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 12.0, right: 4),
-                        child: Text('أسعار عملاء الموقع الجديد', style: TextStyle(fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
-                      ),
-                      _buildNewSiteClientCard(clientName: 'العميل: بخيت', truckCtrl: _bakhitTruckCtrl, tractorCtrl: _bakhitTractorCtrl),
-                      _buildNewSiteClientCard(clientName: 'العميل: عادل', truckCtrl: _adelTruckCtrl, tractorCtrl: _adelTractorCtrl),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        floatingActionButton: _isLocked ? null : FloatingActionButton.extended(
-          onPressed: _toggleLock,
-          backgroundColor: const Color(0xFF28A745),
-          icon: const Icon(Icons.save, color: Colors.white),
-          label: const Text('حفظ وقفل', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: Colors.white)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCompanyCard({required String companyName, required TextEditingController clientCtrl, required TextEditingController officeCtrl}) {
-    return Card(
-      elevation: 1.5,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(companyName, style: const TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
-            const Divider(),
-            Row(
+            // التاب الأول: الموقع القديم
+            ListView(
+              padding: const EdgeInsets.only(top: 8, bottom: 20),
               children: [
-                Expanded(child: _buildInputField('سعر العميل', clientCtrl, Icons.monetization_on_outlined)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildInputField('سعر المكتب', officeCtrl, Icons.account_balance_wallet_outlined)),
+                _buildGlobalsSection('ثوابت الموقع القديم', 'old_site_globals', _oldGlobals),
+                _buildClientsSection('أسعار عملاء الموقع القديم', 'old_site_clients', _oldClients, true),
+              ],
+            ),
+
+            // التاب الثاني: الموقع الجديد
+            ListView(
+              padding: const EdgeInsets.only(top: 8, bottom: 20),
+              children: [
+                _buildGlobalsSection('ثوابت الموقع الجديد', 'new_site_globals', _newGlobals),
+                _buildClientsSection('أسعار عملاء الموقع الجديد', 'new_site_clients', _newClients, false),
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildNewSiteClientCard({required String clientName, required TextEditingController truckCtrl, required TextEditingController tractorCtrl}) {
-    return Card(
-      elevation: 1.5,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(clientName, style: const TextStyle(fontFamily: 'Cairo', fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
-            const Divider(),
-            Row(
-              children: [
-                Expanded(child: _buildInputField('سعر العربيات', truckCtrl, Icons.local_shipping)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildInputField('سعر الجرارات', tractorCtrl, Icons.fire_truck)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInputField(String label, TextEditingController controller, IconData? icon) {
-    return TextField(
-      controller: controller,
-      readOnly: _isLocked,
-      keyboardType: TextInputType.number,
-      style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, color: _isLocked ? Colors.grey.shade700 : Colors.black),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 11),
-        prefixIcon: icon != null ? Icon(icon, size: 18) : null,
-        suffixText: 'ج.م',
-        suffixStyle: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey),
-        filled: _isLocked,
-        fillColor: _isLocked ? Colors.grey.shade100 : Colors.white,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
