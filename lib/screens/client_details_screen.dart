@@ -27,7 +27,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
   late TabController _tabController;
   final List<String> _paymentMethods = ['كاش', 'فودافون كاش', 'إنستاباي', 'تحويل بنكي', 'شيك بنكي'];
   final List<String> _newSystemClients = ['بخيت', 'عادل'];
-
+  double _currentNetRemaining = 0.0; // متغير عشان نحتفظ بقيمة المديونية ونفحصها وقت الحذف
   @override
   void initState() {
     super.initState();
@@ -442,7 +442,67 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       ),
     );
   }
+// ================= دالة حذف العميل =================
+  Future<void> _deleteClient() async {
+    // 1. خط الدفاع الأول: منع الحذف لو عليه فلوس
+    if (_currentNetRemaining > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('عفواً، لا يمكن حذف عميل عليه مديونية! برجاء تصفية الحساب أولاً.', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
+    // 2. رسالة تأكيد أخيرة
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red),
+              SizedBox(width: 8),
+              Text('تأكيد الحذف النهائي', style: TextStyle(fontFamily: 'Cairo', color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          content: const Text('هل أنت متأكد من حذف هذا العميل نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حذف نهائي', style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // 3. التنفيذ الفعلي والرجوع للشاشة السابقة
+    if (confirm == true) {
+      try {
+        var snapshot = await FirebaseFirestore.instance.collection('clients').where('name', isEqualTo: widget.clientName.trim()).get();
+        for (var doc in snapshot.docs) {
+          await doc.reference.delete();
+        }
+        if (mounted) {
+          Navigator.pop(context); // قفل شاشة التفاصيل والرجوع للشاشة الرئيسية
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حذف العميل بنجاح', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)), backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء الحذف: $e')));
+        }
+      }
+    }
+  }
   @override
   Widget build(BuildContext context) {
     String clientCleanName = widget.clientName.trim();
@@ -461,6 +521,11 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
           leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
 
           actions: [
+            IconButton(
+              icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+              tooltip: 'حذف العميل',
+              onPressed: _deleteClient,
+            ),
             if (_tabController.index != 2)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('daily_entries').snapshots(),
@@ -518,31 +583,34 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
           ),
         ),
 
-        body: StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('settings').doc(clientCleanName).snapshots(),
+        body: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('settings').snapshots(),
             builder: (context, settingsSnapshot) {
-              double clientSpecificPrice = 70.0;
+              double clientSpecificPrice = 115.0; // السعر الافتراضي القديم
               double truckPrice = 70.0;
               double tractorPrice = 100.0;
 
-              if (settingsSnapshot.hasData && settingsSnapshot.data!.exists) {
-                var data = settingsSnapshot.data!.data() as Map<String, dynamic>?;
-                if (data != null) {
-                  for (var entry in data.entries) {
-                    String key = entry.key.toLowerCase();
-                    double? val = double.tryParse(entry.value.toString());
-                    if (val != null && val > 0) {
-                      if (key.contains('truck') || key.contains('عربيات') || key.contains('سيارات')) {
-                        truckPrice = val;
-                      } else if (key.contains('tractor') || key.contains('جرار') || key.contains('جرارات')) {
-                        tractorPrice = val;
+              if (settingsSnapshot.hasData) {
+                for (var doc in settingsSnapshot.data!.docs) {
+                  var data = doc.data() as Map<String, dynamic>;
+
+                  // لو العميل تبع الموقع القديم، هات سعره الموحد
+                  if (doc.id == 'old_site_clients') {
+                    for (var entry in data.entries) {
+                      if (_normalizeArabic(entry.key) == targetNorm) {
+                        clientSpecificPrice = double.tryParse(entry.value['سعر العميل']?.toString() ?? '115') ?? 115.0;
                       }
                     }
                   }
-                  // سحب سعر العميل المخصص للموقع القديم من حقل اسم العميل مباشرة في وثيقة settings
-                  if (data[clientCleanName] != null) {
-                    double? sp = double.tryParse(data[clientCleanName].toString());
-                    if (sp != null && sp > 0) clientSpecificPrice = sp;
+
+                  // لو العميل تبع الموقع الجديد، هات سعر العربيات والجرارات
+                  if (doc.id == 'new_site_clients') {
+                    for (var entry in data.entries) {
+                      if (_normalizeArabic(entry.key) == targetNorm) {
+                        truckPrice = double.tryParse(entry.value['عربيات']?.toString() ?? '70') ?? 70.0;
+                        tractorPrice = double.tryParse(entry.value['جرارات']?.toString() ?? '100') ?? 100.0;
+                      }
+                    }
                   }
                 }
               }
@@ -619,7 +687,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                           }
 
                           double netRemaining = newWorkValue - totalPayments;
-
+                          _currentNetRemaining = netRemaining; // تحديث مستمر لقيمة المديونية
                           return Column(
                             children: [
                               Container(

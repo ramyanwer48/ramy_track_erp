@@ -24,7 +24,6 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
     'بخيت', 'عادل'
   ];
 
-  // جدول الأسعار الاحتياطي المضمون بالهمزات
   final Map<String, double> _fallbackPrices = {
     'أحمد سعد': 115.0,
     'احمد سعد': 115.0,
@@ -79,6 +78,41 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
     });
   }
 
+  Future<void> _migrateClientsToFirebase() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final clientsCol = FirebaseFirestore.instance.collection('clients');
+
+      for (String name in _oldSiteNames) {
+        var existing = await clientsCol.where('name', isEqualTo: name).where('site', isEqualTo: 'old').get();
+        if (existing.docs.isEmpty) {
+          await clientsCol.add({'name': name, 'site': 'old', 'createdAt': FieldValue.serverTimestamp()});
+        }
+      }
+
+      for (String name in _newSiteNames) {
+        var existing = await clientsCol.where('name', isEqualTo: name).where('site', isEqualTo: 'new').get();
+        if (existing.docs.isEmpty) {
+          await clientsCol.add({'name': name, 'site': 'new', 'createdAt': FieldValue.serverTimestamp()});
+        }
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم رفع جميع العملاء للفايربيز بنجاح!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
   void _showAddClientDialog() {
     final TextEditingController newClientController = TextEditingController();
     showDialog(
@@ -107,13 +141,27 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
               onPressed: () async {
                 if (newClientController.text.trim().isNotEmpty) {
                   String newName = newClientController.text.trim();
+
+                  var existing = await FirebaseFirestore.instance.collection('clients')
+                      .where('name', isEqualTo: newName)
+                      .where('site', isEqualTo: _selectedSite)
+                      .get();
+
+                  if (existing.docs.isNotEmpty) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('هذا العميل مسجل بالفعل'), backgroundColor: Colors.red),
+                    );
+                    return;
+                  }
+
                   await FirebaseFirestore.instance.collection('clients').add({
                     'name': newName,
                     'site': _selectedSite,
                     'createdAt': FieldValue.serverTimestamp(),
                   });
 
-                  if (!mounted) return;
+                  if (!context.mounted) return;
                   Navigator.pop(dialogContext);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -156,6 +204,7 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
+          // رجعنا دي زي ما كانت عشان تظبط توسطن العنوان ومفيش زراير
           actions: const [SizedBox(width: 48)],
           title: const Text(
             'حسابات العملاء',
@@ -170,98 +219,91 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
                   stream: FirebaseFirestore.instance.collection('settings').snapshots(),
                   builder: (context, settingsSnapshot) {
                     return StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance.collection('daily_entries').snapshots(),
+                        stream: FirebaseFirestore.instance.collection('daily_entries').where('site', isEqualTo: _selectedSite).snapshots(),
                         builder: (context, tripsSnapshot) {
                           return StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance.collection('settlements').snapshots(),
+                              stream: FirebaseFirestore.instance.collection('settlements').where('site', isEqualTo: _selectedSite).snapshots(),
                               builder: (context, paymentsSnapshot) {
 
-                                List<String> combinedNames = List.from(_selectedSite == 'old' ? _oldSiteNames : _newSiteNames);
+                                if (clientsSnapshot.connectionState == ConnectionState.waiting) {
+                                  return const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52)));
+                                }
 
+                                List<String> databaseClients = [];
                                 if (clientsSnapshot.hasData) {
                                   for (var doc in clientsSnapshot.data!.docs) {
-                                    var data = doc.data() as Map<String, dynamic>;
-                                    String newName = data['name'].toString().trim();
-                                    if (!combinedNames.contains(newName)) {
-                                      combinedNames.insert(0, newName);
-                                    }
+                                    databaseClients.add(doc['name'].toString().trim());
                                   }
                                 }
 
-                                Map<String, double> livePrices = {};
+                                // سحب إعدادات الأسعار الجديدة من الفايربيز
+                                Map<String, dynamic> oldClientsSettings = {};
+                                Map<String, dynamic> newClientsSettings = {};
                                 if (settingsSnapshot.hasData) {
                                   for (var doc in settingsSnapshot.data!.docs) {
-                                    var data = doc.data() as Map<String, dynamic>;
-                                    double price = 0.0;
-                                    for (var val in data.values) {
-                                      double? p = double.tryParse(val.toString());
-                                      if (p != null && p > 0) {
-                                        price = p;
-                                        break;
-                                      }
-                                    }
-                                    if (price > 0) {
-                                      livePrices[doc.id.trim()] = price;
-                                    }
+                                    if (doc.id == 'old_site_clients') oldClientsSettings = doc.data() as Map<String, dynamic>;
+                                    if (doc.id == 'new_site_clients') newClientsSettings = doc.data() as Map<String, dynamic>;
                                   }
                                 }
 
                                 List<Map<String, dynamic>> currentClients = [];
                                 double totalDuesAll = 0.0;
 
-                                for (String clientName in combinedNames) {
-                                  double clientPrice = 0.0;
-
-                                  if (livePrices.containsKey(clientName)) {
-                                    clientPrice = livePrices[clientName]!;
-                                  } else {
-                                    for (var entry in livePrices.entries) {
-                                      if (_normalizeArabic(entry.key) == _normalizeArabic(clientName)) {
-                                        clientPrice = entry.value;
-                                        break;
-                                      }
-                                    }
-                                  }
-
-                                  if (clientPrice == 0.0) {
-                                    for (var entry in _fallbackPrices.entries) {
-                                      if (_normalizeArabic(entry.key) == _normalizeArabic(clientName)) {
-                                        clientPrice = entry.value;
-                                        break;
-                                      }
-                                    }
-                                    if (clientPrice == 0.0) clientPrice = 115.0;
-                                  }
-
-                                  double totalCubage = 0.0;
+                                for (String clientName in databaseClients) {
                                   String targetNorm = _normalizeArabic(clientName);
+                                  bool isNewSystem = _selectedSite == 'new';
+
+                                  // تحديد الأسعار بناءً على الموقع
+                                  double oldPrice = 115.0;
+                                  double truckPrice = 70.0;
+                                  double tractorPrice = 100.0;
+
+                                  if (isNewSystem) {
+                                    for (var entry in newClientsSettings.entries) {
+                                      if (_normalizeArabic(entry.key) == targetNorm) {
+                                        truckPrice = double.tryParse(entry.value['عربيات']?.toString() ?? '70') ?? 70.0;
+                                        tractorPrice = double.tryParse(entry.value['جرارات']?.toString() ?? '100') ?? 100.0;
+                                        break;
+                                      }
+                                    }
+                                  } else {
+                                    for (var entry in oldClientsSettings.entries) {
+                                      if (_normalizeArabic(entry.key) == targetNorm) {
+                                        oldPrice = double.tryParse(entry.value['سعر العميل']?.toString() ?? '115') ?? 115.0;
+                                        break;
+                                      }
+                                    }
+                                  }
+
+                                  double totalTrucks = 0.0;
+                                  double totalTractors = 0.0;
+                                  double totalOld = 0.0;
+                                  double totalCubageForStatus = 0.0;
 
                                   if (tripsSnapshot.hasData) {
                                     for (var tripDoc in tripsSnapshot.data!.docs) {
                                       var tData = tripDoc.data() as Map<String, dynamic>;
-                                      bool matches = false;
 
-                                      tData.forEach((k, v) {
-                                        if (v != null && _normalizeArabic(v.toString()).contains(targetNorm)) {
-                                          matches = true;
-                                        }
-                                      });
+                                      if (tData.containsKey('clientsTrips') && tData['clientsTrips'] is List) {
+                                        for (var trip in tData['clientsTrips']) {
+                                          if (trip is Map && trip['clientName'] != null) {
+                                            if (_normalizeArabic(trip['clientName'].toString()) == targetNorm) {
+                                              double cubage = double.tryParse(trip['totalCubage']?.toString() ?? trip['cubage']?.toString() ?? '0') ?? 0.0;
+                                              totalCubageForStatus += cubage;
 
-                                      if (!matches && tData.containsKey('clientStrips') && tData['clientStrips'] is List) {
-                                        for (var strip in tData['clientStrips']) {
-                                          if (strip is Map) {
-                                            strip.forEach((sk, sv) {
-                                              if (sv != null && _normalizeArabic(sv.toString()).contains(targetNorm)) {
-                                                matches = true;
+                                              if (isNewSystem) {
+                                                bool isTractor = trip['isTractor'] == true || tData['isTractor'] == true;
+                                                if (!isTractor) {
+                                                  String detailsStr = '${tData['vehicleNumber'] ?? ''} ${tData['carType'] ?? ''}'.toLowerCase();
+                                                  if (detailsStr.contains('جرار') || detailsStr.contains('tractor')) isTractor = true;
+                                                }
+                                                if (isTractor) totalTractors += cubage; else totalTrucks += cubage;
+                                              } else {
+                                                totalOld += cubage;
                                               }
-                                            });
+                                            }
                                           }
                                         }
-                                      }
-
-                                      if (matches) {
-                                        double cubage = double.tryParse(tData['totalCubage']?.toString() ?? tData['cubage']?.toString() ?? '0') ?? 0.0;
-                                        totalCubage += cubage;
                                       }
                                     }
                                   }
@@ -270,25 +312,28 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
                                   if (paymentsSnapshot.hasData) {
                                     for (var pDoc in paymentsSnapshot.data!.docs) {
                                       var pData = pDoc.data() as Map<String, dynamic>;
-                                      String pName = pData['name']?.toString().trim() ?? '';
-                                      if (_normalizeArabic(pName) == targetNorm) {
+                                      if (_normalizeArabic(pData['name']?.toString() ?? '') == targetNorm) {
                                         totalPayments += double.tryParse(pData['amount']?.toString() ?? pData['totalPayments']?.toString() ?? '0') ?? 0.0;
                                       }
                                     }
                                   }
 
-                                  double due = (totalCubage * clientPrice) - totalPayments;
+                                  // حساب المديونية المظبوطة لكل موقع
+                                  double totalWorkValue = isNewSystem
+                                      ? (totalTrucks * truckPrice) + (totalTractors * tractorPrice)
+                                      : (totalOld * oldPrice);
+
+                                  double due = totalWorkValue - totalPayments;
                                   totalDuesAll += due;
 
                                   currentClients.add({
                                     'name': clientName,
                                     'due': due,
-                                    'lastJob': totalCubage > 0 ? 'نشط' : 'لم يبدأ بعد'
+                                    'lastJob': totalCubageForStatus > 0 ? 'نشط' : 'لم يبدأ بعد'
                                   });
                                 }
 
                                 String formattedTotalDues = totalDuesAll.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
-
                                 return SafeArea(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -363,7 +408,7 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
                                                       decoration: BoxDecoration(
                                                         gradient: const LinearGradient(colors: [Color(0xFFD32F2F), Color(0xFFE53935)]),
                                                         borderRadius: BorderRadius.circular(8),
-                                                        boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.3), blurRadius: 4, offset: const Offset(0, 2))],
+                                                        boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))],
                                                       ),
                                                       child: Column(
                                                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -403,7 +448,9 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
                                       ),
 
                                       Expanded(
-                                        child: GridView.builder(
+                                        child: databaseClients.isEmpty
+                                            ? const Center(child: Text("لا يوجد عملاء، اضغط على زر السهم بالأعلى لتأسيس البيانات", style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)))
+                                            : GridView.builder(
                                           physics: const BouncingScrollPhysics(),
                                           padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 0),
                                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

@@ -7,7 +7,7 @@ import 'client_accounts_screen.dart';
 import 'settings_screen.dart';
 import 'settlements_screen.dart';
 import 'sheikh_mohamed_screen.dart';
-
+import 'driver_accounts_screen.dart';
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -463,7 +463,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             _buildGridCard(context, title: 'حسابات العملاء', icon: Icons.people_outline, color: Colors.purple, onTap: () {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const ClientAccountsScreen()));
                             }),
-                            _buildGridCard(context, title: 'حسابات السائقين', icon: Icons.engineering, color: Colors.teal, onTap: () {}),
+                            _buildGridCard(context, title: 'حسابات السائقين', icon: Icons.engineering, color: Colors.teal, onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const DriverAccountsScreen()));
+                            }),
                             _buildGridCard(context, title: 'حسابات المكتب', icon: Icons.domain, color: Colors.blue.shade700, onTap: () {}),
                           ],
                         ),

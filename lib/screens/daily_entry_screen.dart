@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'client_details_screen.dart';
+import 'dart:async'; // ضروري عشان الـ StreamSubscription
 
 class DailyEntryScreen extends StatefulWidget {
   const DailyEntryScreen({super.key});
@@ -15,8 +15,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   DateTime _selectedDate = DateTime.now();
   final bool _isArabic = true;
   String? _currentDocId;
-
-  // تحكم في فتح الكيبورد وحماية البيانات
+  bool _forceHideDropdowns = false;
   bool _vehicleSearchActive = false;
   bool _isReadOnly = false;
   int _vehicleKeyCounter = 0;
@@ -24,7 +23,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   final List<Map<String, dynamic>> _clientTrips = [];
 
   // ==========================================
-  // قاعدة بيانات المركبات
+  // قاعدة بيانات المركبات (الثابتة للرفع فقط)
   // ==========================================
   final List<Map<String, dynamic>> _vehiclesDB = [
     {'number': '6734', 'name': 'سيد ثروت', 'typeCode': 'Z', 'cubage': 19.0},
@@ -51,8 +50,12 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     {'number': '2919 - 111', 'name': 'محمد', 'typeCode': 'M', 'cubage': 54.0},
   ];
 
+  // القائمة الحية اللي هتقرأ من الفايربيز
+  List<Map<String, dynamic>> _liveVehiclesDB = [];
+  StreamSubscription<QuerySnapshot>? _vehiclesSub;
+
   // ==========================================
-  // قاعدة بيانات العملاء (تستخدم للبحث)
+  // قاعدة بيانات العملاء
   // ==========================================
   final List<String> _oldSiteClients = [
     'أحمد سعد', 'الأقصي', 'الرجاء (3)', 'العماد', 'شركة السلام', 'جنيدي',
@@ -62,9 +65,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   ];
   final List<String> _newSiteClients = ['بخيت', 'عادل'];
 
-  // ==========================================
-  // الذاكرة الاحتياطية للأسعار (لضمان عدم ظهور صفر بالخطأ)
-  // ==========================================
   final Map<String, double> _oldGlobalsDefaults = {
     'سعر سائقين الشركة': 40.0,
     'اللودر': 15.0,
@@ -106,9 +106,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     'عادل': {'عربيات': 70.0, 'جرارات': 100.0},
   };
 
-  // ==========================================
-  // المتغيرات اللي سقطت سهواً وتسببت في الخطأ
-  // ==========================================
   String? _selectedVehicleNumber;
   String _driverName = '---';
   String _driverType = '---';
@@ -116,7 +113,68 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   double _cubage = 0.0;
   bool _isTractor = false;
 
-  // ================= دالة الرسائل بعد التعديل (تظهر بالأسفل تماماً) =================
+  @override
+  void initState() {
+    super.initState();
+    _listenToVehicles(); // تشغيل المراقبة الحية للعربيات
+  }
+
+  @override
+  void dispose() {
+    _vehiclesSub?.cancel(); // إغلاق المراقبة عند الخروج من الشاشة
+    super.dispose();
+  }
+
+  // =========================================================================
+  // الدالة السحرية: تأسيس ورفع أسطول السيارات للفايربيز دفعة واحدة
+  // =========================================================================
+  Future<void> _migrateVehiclesToFirebase() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52))),
+    );
+
+    try {
+      final vehiclesCol = FirebaseFirestore.instance.collection('vehicles');
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      for (var vehicle in _vehiclesDB) {
+        // بنستخدم رقم العربية كـ ID لتسهيل التعديل عليه بعدين
+        String docId = vehicle['number'].toString().replaceAll('/', '-').replaceAll(' ', '');
+        DocumentReference docRef = vehiclesCol.doc(docId);
+        batch.set(docRef, vehicle, SetOptions(merge: true));
+      }
+
+      await batch.commit();
+
+      if (mounted) {
+        Navigator.pop(context); // قفل اللودينج
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم رفع أسطول السيارات للفايربيز بنجاح!', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ: $e', style: const TextStyle(fontFamily: 'Cairo'))));
+      }
+    }
+  }
+
+  // =========================================================================
+  // جلب البيانات حية من الفايربيز
+  // =========================================================================
+  void _listenToVehicles() {
+    _vehiclesSub = FirebaseFirestore.instance.collection('vehicles').snapshots().listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _liveVehiclesDB = snapshot.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+        });
+      }
+    });
+  }
+
   void _showMessage(String message, Color color, {Duration duration = const Duration(milliseconds: 1500), bool isLong = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -130,7 +188,9 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         ),
         backgroundColor: color,
         duration: isLong ? const Duration(seconds: 4) : duration,
-        behavior: SnackBarBehavior.fixed, // تجعلها لازقة في أسفل الشاشة تماماً
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.zero,
+        shape: const RoundedRectangleBorder(),
         elevation: 0,
       ),
     );
@@ -142,7 +202,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     }
   }
 
-  // ================= دوال التاريخ وتحويل الأرقام والفلترة =================
   String _toArabicNumbers(String text) {
     if (!_isArabic) return text;
     const english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -208,44 +267,57 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     }
   }
 
-  void _changeSite(String site) {
-    if (_selectedSite == site && _currentDocId != null) {
-      if (!_isReadOnly) {
-        _showMessage(_isArabic ? '⚠️ يرجى حفظ التعديلات أولاً' : 'Please save changes first', Colors.red.shade700);
-        return;
+  Future<void> _changeSite(String site) async {
+    if (_selectedSite == site) return;
+
+    bool hasUnsavedData = !_isReadOnly && (_selectedVehicleNumber != null || _clientTrips.isNotEmpty);
+
+    if (hasUnsavedData) {
+      bool? shouldSave = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('تنبيه هام', style: TextStyle(color: Colors.red, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+            content: const Text('لديك بيانات لم يتم حفظها. هل تريد حفظ البيان قبل الانتقال للموقع الآخر؟', style: TextStyle(fontFamily: 'Cairo', fontSize: 14)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('إلغاء', style: TextStyle(fontFamily: 'Cairo'))),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تجاهل وانتقال', style: TextStyle(color: Colors.red, fontFamily: 'Cairo'))),
+              ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF28A745)),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('حفظ وانتقال', style: TextStyle(color: Colors.white, fontFamily: 'Cairo'))
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (shouldSave == null) return;
+      if (shouldSave == true) {
+        await _saveEntry();
+        if (!_isReadOnly) return;
       }
-      setState(() {
-        _clientTrips.clear();
-        _clearVehicle();
-        _currentDocId = null;
-        _isReadOnly = false;
-      });
-      return;
     }
 
-    if (_selectedSite != site) {
-      if (_currentDocId != null && !_isReadOnly) {
-        _showMessage(_isArabic ? '⚠️ يرجى حفظ التعديلات أولاً' : 'Please save changes first', Colors.red.shade700);
-        return;
-      }
-      setState(() {
-        _selectedSite = site;
-        _clientTrips.clear();
-        _clearVehicle();
-        _currentDocId = null;
-        _isReadOnly = false;
-      });
-    }
+    setState(() {
+      _selectedSite = site;
+      _clientTrips.clear();
+      _clearVehicle();
+      _currentDocId = null;
+      _isReadOnly = false;
+    });
   }
 
   void _onVehicleSelected(String? numberStr) {
     if (numberStr == null || numberStr.isEmpty) return;
     try {
-      final vehicle = _vehiclesDB.firstWhere((v) => _toArabicNumbers(v['number']) == numberStr || v['number'] == numberStr);
+      // بنقرأ هنا من القائمة الحية اللي جاية من الفايربيز
+      final vehicle = _liveVehiclesDB.firstWhere((v) => _toArabicNumbers(v['number']) == numberStr || v['number'] == numberStr);
       setState(() {
         _selectedVehicleNumber = _toArabicNumbers(vehicle['number']);
         _driverName = vehicle['name'];
-        _cubage = vehicle['cubage'];
+        _cubage = vehicle['cubage'] is int ? (vehicle['cubage'] as int).toDouble() : vehicle['cubage'];
         _typeCode = vehicle['typeCode'];
         _isTractor = vehicle['number'].contains('-');
 
@@ -284,11 +356,20 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     return _toArabicNumbers(result);
   }
 
-  // ================= سجل اليوم =================
   Future<void> _showDailyRecords() async {
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _forceHideDropdowns = true;
+      _vehicleSearchActive = false;
+      for (var trip in _clientTrips) {
+        trip['searchActive'] = false;
+      }
+    });
+
     String queryDate = '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}';
 
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -350,6 +431,16 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         );
       },
     );
+
+    if (mounted) {
+      setState(() {
+        _forceHideDropdowns = false;
+        _vehicleSearchActive = false;
+        for (var trip in _clientTrips) {
+          trip['searchActive'] = false;
+        }
+      });
+    }
   }
 
   String _buildFormattedDateText() {
@@ -360,6 +451,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   }
 
   void _loadEntry(DocumentSnapshot doc) {
+    Navigator.pop(context);
     final data = doc.data() as Map<String, dynamic>;
     setState(() {
       _currentDocId = doc.id;
@@ -371,6 +463,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
 
       _vehicleKeyCounter++;
       _isReadOnly = true;
+      _vehicleSearchActive = false;
 
       if (_typeCode == 'Z') {
         _driverType = _isArabic ? 'سائق شركة (Z)' : 'Company (Z)';
@@ -390,10 +483,8 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         });
       }
     });
-    Navigator.pop(context);
   }
 
-  // ================= الحفظ والتعديل (الدمج الآلي وتجميد الأسعار) =================
   Future<void> _saveEntry() async {
     if (_selectedVehicleNumber == null) {
       _showMessage(_isArabic ? 'برجاء اختيار المركبة أولاً' : 'Select vehicle first', Colors.red.shade700);
@@ -420,7 +511,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
 
       bool hasZeroPrice = false;
 
-      // دالة مساعدة لضمان إحضار الثابت سواء من الفايربيز أو الذاكرة الاحتياطية
       double getGlobalValue(String key, bool isOldSite) {
         if (globalsData.containsKey(key)) {
           return double.tryParse(globalsData[key].toString()) ?? 0.0;
@@ -428,7 +518,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         return (isOldSite ? _oldGlobalsDefaults[key] : _newGlobalsDefaults[key]) ?? 0.0;
       }
 
-      // تجميد الثوابت
       Map<String, dynamic> globalSnapshots = {
         'companyDriverPrice': getGlobalValue('سعر سائقين الشركة', _selectedSite == 'old'),
         'loaderPrice': getGlobalValue('اللودر', _selectedSite == 'old'),
@@ -442,7 +531,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         globalSnapshots['officeTractors'] = getGlobalValue('حساب المكتب في الجرارات', false);
       }
 
-      // تجميد أسعار العملاء
       List<String> clientNamesList = [];
       List<Map<String, dynamic>> finalTrips = [];
 
@@ -455,7 +543,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         double clientPrice = 0.0;
         double officePrice = 0.0;
 
-        // 1. البحث في الفايربيز
         String? matchedDbKey;
         if (clientsData.isNotEmpty) {
           if (clientsData.containsKey(safeKey)) {
@@ -480,7 +567,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                 : (double.tryParse(cData['عربيات']?.toString() ?? '0') ?? 0.0);
           }
         } else {
-          // 2. الفايربيز فاضي (أو العميل مش فيه) -> نستدعي الذاكرة الاحتياطية فوراً
           Map<String, Map<String, double>> defaultsMap = _selectedSite == 'old' ? _oldClientsDefaults : _newClientsDefaults;
           String? matchedDefKey;
           try {
@@ -500,7 +586,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
           }
         }
 
-        // لو بعد الفايربيز وبعد الذاكرة الاحتياطية السعر فضل صفر فعلياً
         if (clientPrice == 0.0) {
           hasZeroPrice = true;
         }
@@ -520,9 +605,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       String dateStringFormatted = '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}';
       bool isUpdate = _currentDocId != null;
 
-      // ================= التجميع الآلي (Auto-Merge) لمنع التكرار =================
       if (!isUpdate) {
-        // البحث عن وثيقة لنفس المركبة في نفس الموقع في نفس اليوم
         var existingDocs = await FirebaseFirestore.instance.collection('daily_entries')
             .where('site', isEqualTo: _selectedSite)
             .where('dateString', isEqualTo: dateStringFormatted)
@@ -530,7 +613,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
             .get();
 
         if (existingDocs.docs.isNotEmpty) {
-          // دمج النقلات الجديدة مع القديمة في نفس الوثيقة
           isUpdate = true;
           _currentDocId = existingDocs.docs.first.id;
           var existingData = existingDocs.docs.first.data();
@@ -541,15 +623,12 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
             int matchIndex = existingTrips.indexWhere((t) => _normalizeArabic(t['clientName']) == safeNewClient);
 
             if (matchIndex >= 0) {
-              // العميل موجود: اجمع العدد والتكعيب
               existingTrips[matchIndex]['trips'] = (existingTrips[matchIndex]['trips'] ?? 0) + newT['trips'];
               existingTrips[matchIndex]['tripsCount'] = (existingTrips[matchIndex]['tripsCount'] ?? 0) + newT['tripsCount'];
               existingTrips[matchIndex]['totalCubage'] = (existingTrips[matchIndex]['totalCubage'] ?? 0.0) + newT['totalCubage'];
               existingTrips[matchIndex]['cubage'] = (existingTrips[matchIndex]['cubage'] ?? 0.0) + newT['cubage'];
-              // تحديث السعر لو اختلف
               existingTrips[matchIndex]['clientPriceSnapshot'] = newT['clientPriceSnapshot'];
             } else {
-              // العميل جديد على الوثيقة دي
               existingTrips.add(newT);
             }
           }
@@ -558,7 +637,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         }
       }
 
-      // الحفظ النهائي في الفايربيز
       final entryData = {
         'date': Timestamp.fromDate(_selectedDate),
         'dateString': dateStringFormatted,
@@ -587,7 +665,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         _isReadOnly = true;
       });
 
-      // الرسائل بناءً على الشرط المطلوب حصراً (بالأسفل تماماً)
       if (hasZeroPrice) {
         _showMessage(
             'تم حفظ البيان بنجاح (تنبيه: يوجد عميل مسجل بسعر صفر)',
@@ -603,7 +680,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     }
   }
 
-  // ================= الحذف =================
   Future<void> _deleteEntry() async {
     if (_currentDocId == null) return;
     bool confirm = await showDialog(
@@ -705,27 +781,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.account_balance_wallet, color: Colors.white),
-              tooltip: 'حساب العميل',
-              onPressed: () {
-                if (_clientTrips.isNotEmpty && _clientTrips[0]['client'] != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ClientDetailsScreen(
-                        clientName: _clientTrips[0]['client'],
-                        openingBalance: 0.0,
-                      ),
-                    ),
-                  );
-                } else {
-                  _showMessage(_isArabic ? 'اختر عميل أولاً لعرض حسابه' : 'Select a client first', Colors.orange);
-                }
-              },
-            ),
-          ],
           title: Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -736,9 +791,9 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
               ),
             ],
           ),
+          actions: const [SizedBox(width: 48)],
         ),
 
-        // ================= الزراير في الأرضية =================
         bottomNavigationBar: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(10.0),
@@ -844,7 +899,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
           ),
         ),
 
-        // ================= محتوى الشاشة =================
         body: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: SafeArea(
@@ -854,7 +908,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. الموقع والتاريخ
                   Card(
                     color: const Color(0xE6FFFFFF),
                     elevation: 1,
@@ -961,7 +1014,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                   ),
                   const SizedBox(height: 6),
 
-                  // 2. بيانات المركبة والسائق
                   Card(
                     color: const Color(0xE6FFFFFF),
                     elevation: 1,
@@ -985,8 +1037,11 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                                       initialValue: TextEditingValue(text: _selectedVehicleNumber ?? ''),
                                       optionsViewBuilder: _buildAutocompleteOptions,
                                       optionsBuilder: (TextEditingValue textEditingValue) {
-                                        if (_isReadOnly) return const Iterable<String>.empty();
-                                        final options = _vehiclesDB.map((v) => _toArabicNumbers(v['number'] as String)).toList();
+                                        if (_isReadOnly || _forceHideDropdowns) return const Iterable<String>.empty();
+
+                                        // هنا التعديل السحري: بيقرأ من القائمة الحية _liveVehiclesDB بدل الثابتة
+                                        final options = _liveVehiclesDB.map((v) => _toArabicNumbers(v['number'] as String)).toList();
+
                                         if (textEditingValue.text.isEmpty) return options;
                                         String searchText = _toArabicNumbers(textEditingValue.text);
                                         return options.where((opt) => opt.contains(searchText));
@@ -1108,7 +1163,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                   ),
                   const SizedBox(height: 6),
 
-                  // 3. تفاصيل العملاء
                   Card(
                     color: const Color(0xE6FFFFFF),
                     elevation: 1,
@@ -1194,21 +1248,34 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                                                   initialValue: TextEditingValue(text: _clientTrips[index]['client'] ?? ''),
                                                   optionsViewBuilder: _buildAutocompleteOptions,
                                                   optionsBuilder: (TextEditingValue textEditingValue) {
-                                                    if (_isReadOnly) return const Iterable<String>.empty();
+                                                    if (_isReadOnly || _forceHideDropdowns) return const Iterable<String>.empty();
                                                     if (textEditingValue.text.isEmpty) return availableClients;
                                                     return availableClients.where((opt) => opt.contains(textEditingValue.text));
                                                   },
                                                   onSelected: (String selection) {
                                                     FocusScope.of(context).unfocus();
-                                                    setState(() => _clientTrips[index]['searchActive'] = false);
+
                                                     bool exists = _clientTrips.any((trip) => trip['client'] == selection && _clientTrips.indexOf(trip) != index);
                                                     if (exists) {
-                                                      _showMessage(_isArabic ? 'العميل مضاف بالفعل!' : 'Client already added!', Colors.red.shade700);
+                                                      _showMessage('العميل موجود بالفعل في القائمة بالأسفل، يرجى تعديل النقلات من هناك.', Colors.red.shade700);
+                                                      setState(() {
+                                                        _clientTrips[index]['searchActive'] = false;
+                                                        _clientTrips[index]['client'] = null;
+                                                      });
                                                     } else {
-                                                      setState(() => _clientTrips[index]['client'] = selection);
+                                                      setState(() {
+                                                        _clientTrips[index]['client'] = selection;
+                                                        _clientTrips[index]['searchActive'] = false;
+                                                      });
                                                     }
                                                   },
                                                   fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                                                    if (_clientTrips[index]['client'] == null && controller.text.isNotEmpty) {
+                                                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                        controller.clear();
+                                                      });
+                                                    }
+
                                                     return TextField(
                                                       controller: controller,
                                                       focusNode: focusNode,
@@ -1341,6 +1408,8 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                       ),
                     ),
                   ),
+
+                  const SizedBox(height: 80),
                 ],
               ),
             ),

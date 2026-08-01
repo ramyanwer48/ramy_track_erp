@@ -38,7 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
     'سعر م٣ خصم الجودة': 60.0,
   };
 
-  // عملاء الموقع القديم (18 عميل) - المفاتيح مفلترة مسبقاً لضمان عدم وجود ثغرات
+  // عملاء الموقع القديم (18 عميل)
   final Map<String, Map<String, double>> _oldClients = {
     'احمد سعد': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
     'الاقصي': {'سعر العميل': 125.0, 'سعر المكتب': 115.0},
@@ -87,6 +87,41 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // =========================================================================
+  // الدالة السحرية: تأسيس ورفع الأسعار دفعة واحدة للفايربيز
+  // =========================================================================
+  Future<void> _migrateSettingsToFirebase() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52))),
+    );
+
+    try {
+      final settingsCol = FirebaseFirestore.instance.collection('settings');
+
+      // رفع الثوابت
+      await settingsCol.doc('old_site_globals').set(_oldGlobals, SetOptions(merge: true));
+      await settingsCol.doc('new_site_globals').set(_newGlobals, SetOptions(merge: true));
+
+      // رفع العملاء
+      await settingsCol.doc('old_site_clients').set(_oldClients, SetOptions(merge: true));
+      await settingsCol.doc('new_site_clients').set(_newClients, SetOptions(merge: true));
+
+      if (mounted) {
+        Navigator.pop(context); // قفل اللودينج
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم تأسيس الإعدادات والأسعار في الفايربيز بنجاح!', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ: $e', style: const TextStyle(fontFamily: 'Cairo'))));
+      }
+    }
   }
 
   // =========================================================================
@@ -193,7 +228,6 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F2A52)),
               onPressed: () async {
                 String rawName = nameCtrl.text.trim();
-                // هنا بنطبق الفلتر الحديدي على الاسم الجديد قبل ما نسيفه!
                 String safeKey = _normalizeArabic(rawName);
 
                 double? p1 = double.tryParse(price1Ctrl.text);
@@ -281,15 +315,12 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
             dbData = snapshot.data!.data() as Map<String, dynamic>;
           }
 
-          // دمج العملاء الافتراضيين مع العملاء الجداد اللي اليوزر ضافهم من التطبيق
           Map<String, Map<String, dynamic>> allClients = {};
 
-          // 1. حط الافتراضي الأول
           defaults.forEach((key, value) {
             allClients[key] = value;
           });
 
-          // 2. ضيف أو حدّث من الداتابيز (عشان لو اليوزر ضاف عميل جديد يظهر)
           dbData.forEach((key, value) {
             if (value is Map) {
               allClients[key] = Map<String, dynamic>.from(value);
@@ -323,7 +354,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                   ),
                 ),
                 ...allClients.entries.map((clientEntry) {
-                  String clientKey = clientEntry.key; // ده الاسم المفلتر
+                  String clientKey = clientEntry.key;
                   Map<String, dynamic> prices = clientEntry.value;
 
                   return Container(
@@ -380,6 +411,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
           centerTitle: true,
           elevation: 0,
           leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
+          actions: const [SizedBox(width: 48)],
           bottom: TabBar(
             controller: _tabController,
             labelColor: const Color(0xFF00D2FF),
