@@ -8,6 +8,8 @@ import 'settings_screen.dart';
 import 'settlements_screen.dart';
 import 'sheikh_mohamed_screen.dart';
 import 'driver_accounts_screen.dart';
+import 'custom_bottom_nav.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -16,7 +18,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  int _currentIndex = 0;
   DateTime _selectedDate = DateTime.now();
 
   String _getArabicDay(int weekday) {
@@ -260,33 +261,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         ),
-        bottomNavigationBar: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
-          decoration: BoxDecoration(
-            color: const Color(0xFF103667),
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(Icons.home, 'الرئيسية', 0, () => setState(() => _currentIndex = 0)),
-              _buildNavItem(Icons.people_outline, 'العملاء', 1, () {
-                setState(() => _currentIndex = 1);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const ClientAccountsScreen()));
-              }),
-              _buildNavItem(Icons.domain, 'المكتب', 2, () => setState(() => _currentIndex = 2)),
-              _buildNavItem(Icons.engineering, 'السائقين', 3, () => setState(() => _currentIndex = 3)),
-              _buildNavItem(Icons.edit_document, 'إدخال البيان', 4, () {
-                setState(() => _currentIndex = 4);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const DailyEntryScreen()));
-              }),
-              _buildNavItem(Icons.settings, 'الإعدادات', 5, () {
-                setState(() => _currentIndex = 5);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
-              }),
-            ],
-          ),
-        ),
+
+        // --- التعديل هنا: استدعاء الشريط السفلي המوحد ---
+        bottomNavigationBar: const CustomBottomNav(currentIndex: 0),
+        // -------------------------------------------------
+
         body: Container(
           width: double.infinity,
           padding: const EdgeInsets.only(top: 5),
@@ -430,7 +409,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              // 3. كارت حساب الشيخ محمد (تم التعديل لأيقونة التريلا 🚛)
+              // 3. كارت حساب الشيخ محمد
               const Expanded(
                 flex: 9,
                 child: SheikhMohamedDashboardCard(),
@@ -526,38 +505,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(IconData icon, String label, int index, VoidCallback onTap) {
-    bool isSelected = _currentIndex == index;
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-                icon,
-                color: isSelected ? const Color(0xFF00D2FF) : Colors.white,
-                size: 24
-            ),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? const Color(0xFF00D2FF) : Colors.white,
-                  fontSize: 10,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  fontFamily: 'Cairo',
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

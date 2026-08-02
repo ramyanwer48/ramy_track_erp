@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'driver_details_screen.dart';
+import 'custom_bottom_nav.dart'; // استدعاء ملف الشريط الموحد
 
 class DriverAccountsScreen extends StatefulWidget {
   const DriverAccountsScreen({super.key});
@@ -22,6 +23,15 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim()
         .toLowerCase();
+  }
+
+  String _toArabicNumbers(String text) {
+    const english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    const arabic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    for (int i = 0; i < english.length; i++) {
+      text = text.replaceAll(english[i], arabic[i]);
+    }
+    return text;
   }
 
   Future<void> _showAddDriverDialog() async {
@@ -68,7 +78,7 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                     'typeCode': 'Z',
                   }, SetOptions(merge: true));
 
-                  if (mounted) Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
                 }
               },
               child: const Text('حفظ السائق', style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontWeight: FontWeight.bold)),
@@ -90,8 +100,9 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
           backgroundColor: const Color(0xFF0F2A52),
           centerTitle: true,
           elevation: 0,
-          leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
         ),
+        // وضع الشريط السفلي في الشاشة الرئيسية مع تحديد الاندكس رقم 3 (السائقين)
+        bottomNavigationBar: const CustomBottomNav(currentIndex: 3),
         body: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('vehicles').where('typeCode', isEqualTo: 'Z').snapshots(),
           builder: (context, vehiclesSnap) {
@@ -122,7 +133,10 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
 
                               for (var vDoc in vehiclesSnap.data!.docs) {
                                 var vData = vDoc.data() as Map<String, dynamic>;
-                                String driverName = vData['name'] ?? '';
+
+                                String driverName = vData['name'] ?? vData['driverName'] ?? '';
+                                if (driverName.trim().isEmpty) driverName = 'سائق بدون اسم';
+
                                 String vehicleNum = vData['number'] ?? '';
                                 String targetNorm = _normalizeArabic(driverName);
 
@@ -133,7 +147,8 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                 if (tripsSnap.hasData) {
                                   for (var tripDoc in tripsSnap.data!.docs) {
                                     var tData = tripDoc.data() as Map<String, dynamic>;
-                                    if (_normalizeArabic(tData['driverName']?.toString() ?? '') == targetNorm) {
+                                    String tripDriver = tData['driverName'] ?? tData['driver'] ?? '';
+                                    if (_normalizeArabic(tripDriver) == targetNorm) {
                                       String site = tData['site'] ?? 'old';
                                       double rate = site == 'new' ? newSiteRate : oldSiteRate;
                                       double vehicleCubage = double.tryParse(tData['cubage']?.toString() ?? '0') ?? 0.0;
@@ -150,7 +165,7 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                       }
 
                                       totalTripsCount += entryTrips;
-                                      double entryTotal = totalEntryCubage > 0 ? (totalEntryCubage * (rate / (vehicleCubage > 0 ? vehicleCubage : 1))) : (entryTrips * rate);
+                                      double entryTotal = totalEntryCubage * rate;
                                       totalDues += entryTotal;
                                     }
                                   }
@@ -159,7 +174,8 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                 if (paymentsSnap.hasData) {
                                   for (var pDoc in paymentsSnap.data!.docs) {
                                     var pData = pDoc.data() as Map<String, dynamic>;
-                                    if (_normalizeArabic(pData['driverName']?.toString() ?? '') == targetNorm) {
+                                    String payDriver = pData['driverName'] ?? pData['driver'] ?? '';
+                                    if (_normalizeArabic(payDriver) == targetNorm) {
                                       totalPayments += double.tryParse(pData['amount']?.toString() ?? '0') ?? 0.0;
                                     }
                                   }
@@ -178,7 +194,6 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
 
                               return Column(
                                 children: [
-                                  // 1. الكروت العلوية (إجمالي المديونية + عدد السائقين) مطابقة لتصميم العملاء
                                   Padding(
                                     padding: const EdgeInsets.all(12.0),
                                     child: Row(
@@ -189,16 +204,16 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                             decoration: BoxDecoration(
                                               color: Colors.red.shade600,
                                               borderRadius: BorderRadius.circular(12),
-                                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
+                                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))],
                                             ),
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
-                                                const Text('إجمالي المستحقات', style: TextStyle(fontFamily: 'Cairo', color: Colors.white70, fontSize: 11)),
+                                                const Text('صافي مديونيات السائقين', style: TextStyle(fontFamily: 'Cairo', color: Colors.white70, fontSize: 11)),
                                                 const SizedBox(height: 4),
                                                 FittedBox(
                                                   child: Text(
-                                                    '${totalDriversDueAll.toStringAsFixed(0)} ج.م',
+                                                    '${_toArabicNumbers(totalDriversDueAll.toStringAsFixed(0))} ج.م',
                                                     style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white),
                                                   ),
                                                 ),
@@ -213,7 +228,7 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                             decoration: BoxDecoration(
                                               color: Colors.white,
                                               borderRadius: BorderRadius.circular(12),
-                                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))],
                                               border: Border.all(color: Colors.grey.shade200),
                                             ),
                                             child: Column(
@@ -222,7 +237,7 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                                 const Text('عدد السائقين', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey, fontSize: 11)),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  driversList.length.toString(),
+                                                  _toArabicNumbers(driversList.length.toString()),
                                                   style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.w900, fontSize: 18, color: Color(0xFF0F2A52)),
                                                 ),
                                               ],
@@ -233,7 +248,6 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                     ),
                                   ),
 
-                                  // 2. زرار إضافة سائق + عنوان القسم
                                   Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
                                     child: Row(
@@ -255,7 +269,6 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                     ),
                                   ),
 
-                                  // 3. شبكة كروت السائقين مطابقة للعملاء تماماً
                                   Expanded(
                                     child: driversList.isEmpty
                                         ? const Center(child: Text('لا يوجد سائقين شركة مسجلين.', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)))
@@ -265,71 +278,91 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                         crossAxisCount: 2,
                                         crossAxisSpacing: 10,
                                         mainAxisSpacing: 10,
-                                        childAspectRatio: 1.2,
+                                        childAspectRatio: 1.15,
                                       ),
                                       itemCount: driversList.length,
                                       itemBuilder: (context, index) {
                                         var driver = driversList[index];
-                                        bool hasDue = driver['due'] > 0;
+                                        double netRemaining = driver['due'];
 
-                                        return InkWell(
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(builder: (context) => DriverDetailsScreen(driverName: driver['name'], vehicleNumber: driver['number'])),
-                                            );
-                                          },
-                                          borderRadius: BorderRadius.circular(12),
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(12),
-                                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 5, offset: const Offset(0, 2))],
-                                              // الإطار الملون فوق الكارت (أحمر لو عليه فلوس، أخضر لو خالص زي العملاء)
-                                              border: Border(
-                                                top: BorderSide(color: hasDue ? Colors.red.shade600 : Colors.green.shade600, width: 4),
-                                                right: BorderSide(color: Colors.grey.shade200),
-                                                left: BorderSide(color: Colors.grey.shade200),
-                                                bottom: BorderSide(color: Colors.grey.shade200),
+                                        // المنطق المحاسبي الذكي الجديد (له / عليه / خالص)
+                                        Color statusColor;
+                                        String statusText;
+
+                                        if (netRemaining > 0) {
+                                          statusColor = Colors.blue.shade600;
+                                          statusText = 'له: ${_toArabicNumbers(netRemaining.toStringAsFixed(0))} ج.م';
+                                        } else if (netRemaining < 0) {
+                                          statusColor = Colors.red.shade600;
+                                          statusText = 'عليه: ${_toArabicNumbers(netRemaining.abs().toStringAsFixed(0))} ج.م';
+                                        } else {
+                                          statusColor = Colors.green.shade600;
+                                          statusText = 'خالص';
+                                        }
+
+                                        return Card(
+                                          margin: EdgeInsets.zero,
+                                          elevation: 2,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: InkWell(
+                                            onTap: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(builder: (context) => DriverDetailsScreen(driverName: driver['name'], vehicleNumber: driver['number'])),
+                                              );
+                                            },
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                border: Border(
+                                                  top: BorderSide(color: statusColor, width: 4),
+                                                ),
                                               ),
-                                            ),
-                                            padding: const EdgeInsets.all(12),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Text(
-                                                  driver['name'],
-                                                  style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F2A52)),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                Row(
-                                                  children: [
-                                                    const Icon(Icons.account_balance_wallet_outlined, size: 14, color: Colors.grey),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      hasDue ? '${driver['due'].toStringAsFixed(0)} ج.م' : 'خالص',
-                                                      style: TextStyle(
-                                                        fontFamily: 'Cairo',
-                                                        fontWeight: FontWeight.w900,
-                                                        fontSize: 13,
-                                                        color: hasDue ? Colors.red.shade700 : Colors.green.shade700,
-                                                      ),
+                                              padding: const EdgeInsets.all(10),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                                children: [
+                                                  Text(
+                                                    driver['name'],
+                                                    style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F2A52)),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  FittedBox(
+                                                    fit: BoxFit.scaleDown,
+                                                    child: Row(
+                                                      children: [
+                                                        Icon(Icons.account_balance_wallet_outlined, size: 14, color: statusColor),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          statusText,
+                                                          style: TextStyle(
+                                                            fontFamily: 'Cairo',
+                                                            fontWeight: FontWeight.w900,
+                                                            fontSize: 12,
+                                                            color: statusColor,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
-                                                  ],
-                                                ),
-                                                Row(
-                                                  children: [
-                                                    const Icon(Icons.access_time, size: 13, color: Colors.grey),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      driver['active'] ? 'آخر شغل: نشط' : 'آخر شغل: لم يبدأ بعد',
-                                                      style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey),
+                                                  ),
+                                                  FittedBox(
+                                                    fit: BoxFit.scaleDown,
+                                                    child: Row(
+                                                      children: [
+                                                        const Icon(Icons.access_time, size: 13, color: Colors.grey),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          driver['active'] ? 'آخر شغل: نشط' : 'آخر شغل: لم يبدأ بعد',
+                                                          style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey),
+                                                        ),
+                                                      ],
                                                     ),
-                                                  ],
-                                                ),
-                                              ],
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'client_details_screen.dart';
+import 'custom_bottom_nav.dart'; // استدعاء الشريط الموحد
 
 class ClientAccountsScreen extends StatefulWidget {
   const ClientAccountsScreen({super.key});
@@ -204,13 +205,15 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
-          // رجعنا دي زي ما كانت عشان تظبط توسطن العنوان ومفيش زراير
           actions: const [SizedBox(width: 48)],
           title: const Text(
             'حسابات العملاء',
             style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, fontFamily: 'Cairo'),
           ),
         ),
+
+        // --- إضافة الشريط السفلي هنا (اندكس 2 للعملاء) ---
+        bottomNavigationBar: const CustomBottomNav(currentIndex: 2),
 
         body: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('clients').where('site', isEqualTo: _selectedSite).snapshots(),
@@ -236,7 +239,6 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
                                   }
                                 }
 
-                                // سحب إعدادات الأسعار الجديدة من الفايربيز
                                 Map<String, dynamic> oldClientsSettings = {};
                                 Map<String, dynamic> newClientsSettings = {};
                                 if (settingsSnapshot.hasData) {
@@ -253,7 +255,6 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
                                   String targetNorm = _normalizeArabic(clientName);
                                   bool isNewSystem = _selectedSite == 'new';
 
-                                  // تحديد الأسعار بناءً على الموقع
                                   double oldPrice = 115.0;
                                   double truckPrice = 70.0;
                                   double tractorPrice = 100.0;
@@ -318,7 +319,6 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
                                     }
                                   }
 
-                                  // حساب المديونية المظبوطة لكل موقع
                                   double totalWorkValue = isNewSystem
                                       ? (totalTrucks * truckPrice) + (totalTractors * tractorPrice)
                                       : (totalOld * oldPrice);
