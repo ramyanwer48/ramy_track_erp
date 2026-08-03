@@ -8,6 +8,7 @@ import 'settings_screen.dart';
 import 'settlements_screen.dart';
 import 'sheikh_mohamed_screen.dart';
 import 'driver_accounts_screen.dart';
+import 'office_accounts_screen.dart';
 import 'custom_bottom_nav.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -262,9 +263,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
 
-        // --- التعديل هنا: استدعاء الشريط السفلي המوحد ---
         bottomNavigationBar: const CustomBottomNav(currentIndex: 0),
-        // -------------------------------------------------
 
         body: Container(
           width: double.infinity,
@@ -445,7 +444,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             _buildGridCard(context, title: 'حسابات السائقين', icon: Icons.engineering, color: Colors.teal, onTap: () {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const DriverAccountsScreen()));
                             }),
-                            _buildGridCard(context, title: 'حسابات المكتب', icon: Icons.domain, color: Colors.blue.shade700, onTap: () {}),
+                            _buildGridCard(context, title: 'حسابات المكتب', icon: Icons.domain, color: Colors.blue.shade700, onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const OfficeAccountsScreen()));
+                            }),
                           ],
                         ),
                       ),
