@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'custom_bottom_nav.dart'; // <-- استدعاء شريط التنقل
 
 class SettlementsScreen extends StatefulWidget {
   const SettlementsScreen({super.key});
@@ -749,12 +750,21 @@ class _SettlementsScreenState extends State<SettlementsScreen> {
       child: Scaffold(
         backgroundColor: const Color(0xFFF4F6F9),
         appBar: AppBar(
-          title: const Text('الدفعات والخصومات', style: TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-          backgroundColor: const Color(0xFF0F2A52),
-          centerTitle: true,
+          title: const Text('الخصومات والتسويات', style: TextStyle(color: Colors.white, fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold)),
           elevation: 0,
-          leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)),
+          centerTitle: true,
+          automaticallyImplyLeading: false, // <-- شيلنا سهم الرجوع
+          flexibleSpace: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF0F2A52), Color(0xFF1E4885)],
+                begin: Alignment.centerRight,
+                end: Alignment.centerLeft,
+              ),
+            ),
+          ),
         ),
+        bottomNavigationBar: const CustomBottomNav(currentIndex: 4), // <-- شريط التنقل للإندكس 4
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(

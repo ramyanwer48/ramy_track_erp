@@ -7,35 +7,9 @@ class DailyEntryScreen extends StatefulWidget {
   const DailyEntryScreen({super.key});
 
   static Future<bool> checkUnsavedChanges(BuildContext context) async {
-    FocusManager.instance.primaryFocus?.unfocus();
-
     final state = context.findAncestorStateOfType<_DailyEntryScreenState>();
-    if (state != null && !state._isReadOnly && (state._selectedVehicleNumber != null || state._clientTrips.isNotEmpty)) {
-      bool? result = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            title: const Text('تنبيه: بيان غير محفوظ!', style: TextStyle(color: Colors.red, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16)),
-            content: const Text('لديك بيانات لم يتم حفظها. هل تريد حفظ البيان الحالي أولاً؟', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء والعودة', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey))),
-              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تجاهل ومتابعة', style: TextStyle(fontFamily: 'Cairo', color: Colors.red))),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF28A745)),
-                onPressed: () async {
-                  Navigator.pop(ctx, false);
-                  await state._saveEntry();
-                },
-                child: const Text('حفظ ومتابعة', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
-              ),
-            ],
-          ),
-        ),
-      );
-      return result ?? false;
+    if (state != null) {
+      return await state.checkUnsavedChangesInternal();
     }
     return true;
   }
@@ -49,36 +23,13 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   DateTime _selectedDate = DateTime.now();
   final bool _isArabic = true;
   String? _currentDocId;
-  final bool _forceHideDropdowns = false;
+
+  bool _forceHideDropdowns = false;
   bool _vehicleSearchActive = false;
   bool _isReadOnly = false;
   int _vehicleKeyCounter = 0;
 
   final List<Map<String, dynamic>> _clientTrips = [];
-
-  final List<Map<String, dynamic>> _vehiclesDB = [
-    {'number': '6734', 'name': 'سيد ثروت', 'typeCode': 'Z', 'cubage': 19.0},
-    {'number': '5361', 'name': 'محمود ثروت', 'typeCode': 'Z', 'cubage': 19.0},
-    {'number': '7391', 'name': 'سيد حمدي', 'typeCode': 'Z', 'cubage': 20.0},
-    {'number': '9728', 'name': 'مصطفى ثروت', 'typeCode': 'Z', 'cubage': 20.0},
-    {'number': '7718', 'name': 'سيد فرداني', 'typeCode': 'Z', 'cubage': 14.0},
-    {'number': '2461', 'name': 'صبحي السيد', 'typeCode': 'Z', 'cubage': 19.0},
-    {'number': '4129', 'name': 'علي', 'typeCode': 'Z', 'cubage': 20.0},
-    {'number': '2365', 'name': 'محمود جميل', 'typeCode': 'Z', 'cubage': 19.0},
-    {'number': '6534', 'name': 'محمد صلاح', 'typeCode': 'Z', 'cubage': 18.5},
-    {'number': '6547', 'name': 'محمد', 'typeCode': 'Z', 'cubage': 18.5},
-    {'number': '6147', 'name': 'سعيد', 'typeCode': 'Z', 'cubage': 18.0},
-    {'number': '239', 'name': 'محمد', 'typeCode': 'M', 'cubage': 12.0},
-    {'number': '1918', 'name': 'أدهم السوري', 'typeCode': 'M', 'cubage': 20.0},
-    {'number': '5482', 'name': 'تحسين وش', 'typeCode': 'M', 'cubage': 20.0},
-    {'number': '6439', 'name': 'إسماعيل', 'typeCode': 'M', 'cubage': 20.0},
-    {'number': '1543', 'name': 'أبو لويفي', 'typeCode': 'M', 'cubage': 20.0},
-    {'number': '5482 - 1478', 'name': 'تحسين', 'typeCode': 'M', 'cubage': 53.0},
-    {'number': '1853 - 222', 'name': 'أبو شريف', 'typeCode': 'M', 'cubage': 51.0},
-    {'number': '5375 - 333', 'name': 'سعيد', 'typeCode': 'M', 'cubage': 56.0},
-    {'number': '2919 - 111', 'name': 'محمد', 'typeCode': 'M', 'cubage': 54.0},
-  ];
-
   List<Map<String, dynamic>> _liveVehiclesDB = [];
   StreamSubscription<QuerySnapshot>? _vehiclesSub;
 
@@ -142,13 +93,50 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   void initState() {
     super.initState();
     _listenToVehicles();
-    if (_vehiclesDB.isEmpty) {}
   }
 
   @override
   void dispose() {
     _vehiclesSub?.cancel();
     super.dispose();
+  }
+
+  Future<bool> checkUnsavedChangesInternal() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future.delayed(const Duration(milliseconds: 250));
+
+    if (!_isReadOnly && (_selectedVehicleNumber != null || _clientTrips.isNotEmpty)) {
+      bool? result = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Text('تنبيه: بيان غير محفوظ!', style: TextStyle(color: Colors.red, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16)),
+            content: const Text('لديك بيانات لم يتم حفظها. هل تريد حفظ البيان الحالي أولاً؟', style: TextStyle(fontFamily: 'Cairo', fontSize: 13)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء والعودة', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey))),
+              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تجاهل ومتابعة', style: TextStyle(fontFamily: 'Cairo', color: Colors.red))),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF28A745)),
+                onPressed: () async {
+                  // هنا طبقنا نصيحة הـ AI الممتازة: لو الحفظ فشل، التنبيه مش هيقفل
+                  final saved = await _saveEntry();
+                  if (!ctx.mounted) return;
+                  if (saved) {
+                    Navigator.pop(ctx, true);
+                  }
+                },
+                child: const Text('حفظ ومتابعة', style: TextStyle(fontFamily: 'Cairo', color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+      );
+      return result ?? false;
+    }
+    return true;
   }
 
   void _listenToVehicles() {
@@ -221,16 +209,12 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       year = _toArabicNumbers(year);
     }
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      textDirection: TextDirection.rtl,
-      children: [
-        Text(day, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold)),
-        const Text('/', style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold)),
-        Text(month, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold)),
-        const Text('/', style: TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold)),
-        Text(year, style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold)),
-      ],
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Text(
+        '$day / $month / $year',
+        style: const TextStyle(fontFamily: 'Cairo', color: Color(0xFF0F2A52), fontSize: 13, fontWeight: FontWeight.bold),
+      ),
     );
   }
 
@@ -280,15 +264,15 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
 
       if (shouldSave == null) return;
       if (shouldSave == true) {
-        await _saveEntry();
-        if (!_isReadOnly) return;
+        final saved = await _saveEntry(); // هنا طبقنا الحماية لو الحفظ فشل
+        if (!saved) return;
       }
     }
 
     setState(() {
       _selectedSite = site;
       _clientTrips.clear();
-      _clearVehicle();
+      _resetVehicleFieldsOnly(); // تنظيف الـ setState المتداخل
       _currentDocId = null;
       _isReadOnly = false;
     });
@@ -297,13 +281,13 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   void _onVehicleSelected(String? numberStr) {
     if (numberStr == null || numberStr.isEmpty) return;
     try {
-      final vehicle = _liveVehiclesDB.firstWhere((v) => _toArabicNumbers(v['number']) == numberStr || v['number'] == numberStr);
+      final vehicle = _liveVehiclesDB.firstWhere((v) => _toArabicNumbers(v['number'].toString()) == numberStr || v['number'].toString() == numberStr);
       setState(() {
-        _selectedVehicleNumber = _toArabicNumbers(vehicle['number']);
-        _driverName = vehicle['name'];
-        _cubage = vehicle['cubage'] is int ? (vehicle['cubage'] as int).toDouble() : vehicle['cubage'];
-        _typeCode = vehicle['typeCode'];
-        _isTractor = vehicle['number'].contains('-');
+        _selectedVehicleNumber = _toArabicNumbers(vehicle['number'].toString());
+        _driverName = vehicle['name'].toString();
+        _cubage = double.tryParse(vehicle['cubage'].toString()) ?? 0.0;
+        _typeCode = vehicle['typeCode'].toString();
+        _isTractor = vehicle['number'].toString().contains('-');
 
         if (_typeCode == 'Z') {
           _driverType = _isArabic ? 'سائق شركة (Z)' : 'Company (Z)';
@@ -311,19 +295,28 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
           _driverType = _isArabic ? 'سائق محجر (M)' : 'Quarry (M)';
         }
       });
-    } catch (_) {}
+    } catch (e, st) {
+      // معالجة الأخطاء الصامتة زي ما اقترح
+      debugPrint('Vehicle selection error: $e');
+      debugPrint('$st');
+    }
+  }
+
+  // الدالة دي اتعملت عشان تتجنب مشاكل الـ setState المتداخلة
+  void _resetVehicleFieldsOnly() {
+    _selectedVehicleNumber = null;
+    _driverName = '---';
+    _driverType = '---';
+    _typeCode = '';
+    _cubage = 0.0;
+    _isTractor = false;
+    _vehicleSearchActive = false;
+    _vehicleKeyCounter++;
   }
 
   void _clearVehicle() {
     setState(() {
-      _selectedVehicleNumber = null;
-      _driverName = '---';
-      _driverType = '---';
-      _typeCode = '';
-      _cubage = 0.0;
-      _isTractor = false;
-      _vehicleSearchActive = false;
-      _vehicleKeyCounter++;
+      _resetVehicleFieldsOnly();
     });
   }
 
@@ -338,31 +331,36 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     return _toArabicNumbers(result);
   }
 
-  // الانتقال لشاشة السجل المستقلة (حل نهائي لمشكلة القوائم المعلقة)
-  void _openRecordsScreen() {
-    FocusScope.of(context).unfocus();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DailyRecordsScreen(
-          selectedSite: _selectedSite,
-          onLoadEntry: (doc) {
-            _loadEntry(doc);
-          },
+  Future<void> _checkAndOpenRecords() async {
+    if (_isReadOnly) { _handleReadOnlyTap(); return; }
+
+    bool canLeave = await checkUnsavedChangesInternal();
+    if (!mounted) return;
+
+    if (canLeave) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DailyRecordsScreen(
+            selectedSite: _selectedSite,
+            onLoadEntry: (doc) {
+              _loadEntry(doc);
+            },
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   void _loadEntry(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     setState(() {
       _currentDocId = doc.id;
-      _selectedVehicleNumber = data['vehicleNumber'];
-      _driverName = data['driverName'] ?? '---';
-      _typeCode = data['typeCode'] ?? '';
-      _cubage = (data['cubage'] ?? 0.0).toDouble();
-      _isTractor = data['isTractor'] ?? false;
+      _selectedVehicleNumber = data['vehicleNumber']?.toString();
+      _driverName = data['driverName']?.toString() ?? '---';
+      _typeCode = data['typeCode']?.toString() ?? '';
+      _cubage = double.tryParse((data['cubage'] ?? 0.0).toString()) ?? 0.0;
+      _isTractor = data['isTractor'] == true;
 
       _vehicleKeyCounter++;
       _isReadOnly = true;
@@ -380,26 +378,27 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       List<dynamic> trips = data['clientsTrips'] ?? [];
       for (var t in trips) {
         _clientTrips.add({
-          'client': t['clientName'] ?? t['client'],
-          'trips': t['tripsCount'] ?? t['trips'],
+          'client': t['clientName']?.toString() ?? t['client']?.toString(),
+          'trips': int.tryParse(t['tripsCount']?.toString() ?? t['trips']?.toString() ?? '1') ?? 1, // حماية البارسنج
           'searchActive': false,
         });
       }
     });
   }
 
-  Future<void> _saveEntry() async {
+  // غيرنا الدالة ترجع bool (عشان نعرف الحفظ تم ولا فشل)
+  Future<bool> _saveEntry() async {
     if (_selectedVehicleNumber == null) {
       _showMessage(_isArabic ? 'برجاء اختيار المركبة أولاً' : 'Select vehicle first', Colors.red.shade700);
-      return;
+      return false; // فشل
     }
     if (_clientTrips.isEmpty) {
       _showMessage(_isArabic ? 'برجاء إضافة عميل واحد على الأقل' : 'Add at least one client', Colors.red.shade700);
-      return;
+      return false; // فشل
     }
     if (_clientTrips.any((trip) => trip['client'] == null || trip['client'].toString().trim().isEmpty)) {
       _showMessage(_isArabic ? 'برجاء اختيار أسماء جميع العملاء في الجدول' : 'Select all client names', Colors.red.shade700);
-      return;
+      return false; // فشل
     }
 
     try {
@@ -493,13 +492,15 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
           hasZeroPrice = true;
         }
 
+        int tripsCount = int.tryParse(t['trips'].toString()) ?? 1; // حماية البارسنج
+
         finalTrips.add({
           'client': rawName,
           'clientName': rawName,
-          'trips': t['trips'],
-          'tripsCount': t['trips'],
-          'totalCubage': t['trips'] * _cubage,
-          'cubage': t['trips'] * _cubage,
+          'trips': tripsCount,
+          'tripsCount': tripsCount,
+          'totalCubage': tripsCount * _cubage,
+          'cubage': tripsCount * _cubage,
           'clientPriceSnapshot': clientPrice,
           'officePriceSnapshot': officePrice,
         });
@@ -564,15 +565,27 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         await FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).update(entryData);
       }
 
-      setState(() => _isReadOnly = true);
+      // إحنا حافظنا على طلبك الأصلي (تفريغ الشاشة وإخفاء أزرار التعديل والحذف)
+      setState(() {
+        _currentDocId = null;
+        _resetVehicleFieldsOnly();
+        _clientTrips.clear();
+        _isReadOnly = false;
+      });
 
+      if (!mounted) return false;
       if (hasZeroPrice) {
         _showMessage('تم حفظ البيان بنجاح (تنبيه: يوجد عميل مسجل بسعر صفر)', Colors.orange.shade800, isLong: true);
       } else {
         _showMessage('تم حفظ البيان بنجاح', const Color(0xFF28A745));
       }
+
+      return true; // نجاح الحفظ
+
     } catch (e) {
+      if (!mounted) return false;
       _showMessage('Error: $e', Colors.red.shade700);
+      return false; // فشل الحفظ
     }
   }
 
@@ -596,12 +609,14 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       await FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).delete();
       setState(() {
         _currentDocId = null;
-        _clearVehicle();
+        _resetVehicleFieldsOnly(); // تنظيف الـ setState المتداخل
         _clientTrips.clear();
         _isReadOnly = false;
       });
+      if (!mounted) return;
       _showMessage(_isArabic ? 'تم حذف البيان بنجاح' : 'Entry Deleted Successfully.', Colors.red.shade700);
     } catch (e) {
+      if (!mounted) return;
       _showMessage('Error: $e', Colors.red.shade700);
     }
   }
@@ -674,7 +689,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
             onPressed: () async {
-              bool canLeave = await DailyEntryScreen.checkUnsavedChanges(context);
+              bool canLeave = await checkUnsavedChangesInternal();
               if (canLeave && mounted) Navigator.pop(context);
             },
           ),
@@ -784,10 +799,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                                 child: SizedBox(
                                   height: 30,
                                   child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      if (_isReadOnly) { _handleReadOnlyTap(); return; }
-                                      _openRecordsScreen(); // فتح شاشة السجل المستقلة
-                                    },
+                                    onPressed: _checkAndOpenRecords,
                                     icon: const Icon(Icons.list_alt, size: 12, color: Colors.white),
                                     label: const Text('السجل', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
                                     style: ElevatedButton.styleFrom(
@@ -830,7 +842,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                                       optionsViewBuilder: _buildAutocompleteOptions,
                                       optionsBuilder: (TextEditingValue textEditingValue) {
                                         if (_isReadOnly || _forceHideDropdowns) return const Iterable<String>.empty();
-                                        final options = _liveVehiclesDB.map((v) => _toArabicNumbers(v['number'] as String)).toList();
+                                        final options = _liveVehiclesDB.map((v) => _toArabicNumbers(v['number'].toString())).toList();
                                         if (textEditingValue.text.isEmpty) return options;
                                         return options.where((opt) => opt.contains(_toArabicNumbers(textEditingValue.text)));
                                       },
@@ -989,7 +1001,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                                         itemCount: _clientTrips.length,
                                         separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.grey),
                                         itemBuilder: (context, index) {
-                                          int currentTrips = _clientTrips[index]['trips'];
+                                          int currentTrips = int.tryParse(_clientTrips[index]['trips'].toString()) ?? 1;
                                           double currentCubage = currentTrips * _cubage;
 
                                           return Container(
@@ -1143,7 +1155,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                           boxShadow: _isReadOnly ? null : [const BoxShadow(color: Color(0x4D0F2A52), blurRadius: 2, offset: Offset(0, 1))],
                         ),
                         child: ElevatedButton.icon(
-                          onPressed: _isReadOnly ? () => _handleReadOnlyTap() : _saveEntry,
+                          onPressed: _isReadOnly ? () => _handleReadOnlyTap() : () async { await _saveEntry(); },
                           icon: const Icon(Icons.save, color: Colors.white, size: 16),
                           label: Text(
                               _isArabic ? (_currentDocId != null ? 'حفظ التعديلات' : 'حفظ البيان') : 'Save Entry',
@@ -1165,7 +1177,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                               child: ElevatedButton.icon(
                                 onPressed: _currentDocId != null ? () {
                                   if (!_isReadOnly) return;
-                                  setState(() { _clientTrips.clear(); _clearVehicle(); _currentDocId = null; _isReadOnly = false; });
+                                  setState(() { _clientTrips.clear(); _resetVehicleFieldsOnly(); _currentDocId = null; _isReadOnly = false; });
                                 } : null,
                                 icon: const Icon(Icons.refresh, color: Colors.white, size: 12),
                                 label: const Text('بيان جديد', style: TextStyle(fontFamily: 'Cairo', color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -1237,7 +1249,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
 }
 
 // ==========================================
-// شاشة "السجل المستقلة" (الحل النهائي الجذري)
+// شاشة "السجل المستقلة"
 // ==========================================
 class DailyRecordsScreen extends StatefulWidget {
   final String selectedSite;
@@ -1250,8 +1262,50 @@ class DailyRecordsScreen extends StatefulWidget {
 }
 
 class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
-  DateTime startDate = DateTime.now().subtract(const Duration(days: 7));
-  DateTime endDate = DateTime.now();
+  DateTimeRange _selectedDateRange = DateTimeRange(
+    start: DateTime.now().subtract(const Duration(days: 7)),
+    end: DateTime.now(),
+  );
+
+  String _toArabicNumbers(String text) {
+    const english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    const arabic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    for (int i = 0; i < english.length; i++) {
+      text = text.replaceAll(english[i], arabic[i]);
+    }
+    return text;
+  }
+
+  Widget _buildStrictDateText(DateTime date) {
+    String d = _toArabicNumbers(date.day.toString().padLeft(2, '0'));
+    String m = _toArabicNumbers(date.month.toString().padLeft(2, '0'));
+    String y = _toArabicNumbers(date.year.toString());
+
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Text(
+        '$d / $m / $y',
+        style: const TextStyle(fontFamily: 'Cairo', fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
+      ),
+    );
+  }
+
+  DateTime? _extractEntryDate(Map<String, dynamic> data) {
+    final dynamic rawDate = data['date'];
+    if (rawDate is Timestamp) return rawDate.toDate();
+    if (rawDate is DateTime) return rawDate;
+
+    final rawDateString = (data['dateString'] ?? '').toString().trim();
+    final parts = rawDateString.split('/');
+    if (parts.length != 3) return null;
+
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+
+    return DateTime(year, month, day);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1275,93 +1329,97 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
           padding: const EdgeInsets.all(10.0),
           child: Column(
             children: [
-              // فلتر "من وإلى" في سطر واحد وبتنسيق اليوم/الشهر/السنة
-              Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () async {
-                        DateTime? picked = await showDatePicker(
-                          context: context,
-                          initialDate: startDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2030),
-                        );
-                        if (picked != null) {
-                          setState(() => startDate = picked);
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(6)),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.calendar_today, size: 14, color: Color(0xFF4A78B9)),
-                            const SizedBox(width: 6),
-                            Text('من: ${startDate.day}/${startDate.month}/${startDate.year}', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold)),
-                          ],
+              InkWell(
+                onTap: () async {
+                  DateTimeRange? picked = await showDateRangePicker(
+                    context: context,
+                    initialDateRange: _selectedDateRange,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                    cancelText: 'إلغاء',
+                    confirmText: 'حفظ',
+                    saveText: 'حفظ',
+                    helpText: 'اختر فترة البحث',
+                    fieldStartHintText: 'تاريخ البداية',
+                    fieldEndHintText: 'تاريخ النهاية',
+                    locale: const Locale('ar', 'EG'),
+                    builder: (context, child) {
+                      return Theme(
+                        data: ThemeData.light().copyWith(
+                          colorScheme: const ColorScheme.light(primary: Color(0xFF0F2A52)),
                         ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () async {
-                        DateTime? picked = await showDatePicker(
-                          context: context,
-                          initialDate: endDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2030),
-                        );
-                        if (picked != null) {
-                          setState(() => endDate = picked);
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(6)),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.calendar_today, size: 14, color: Color(0xFF4A78B9)),
-                            const SizedBox(width: 6),
-                            Text('إلى: ${endDate.day}/${endDate.month}/${endDate.year}', style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold)),
-                          ],
+                        child: Directionality(
+                          textDirection: TextDirection.rtl,
+                          child: child!,
                         ),
-                      ),
-                    ),
+                      );
+                    },
+                  );
+                  if (picked != null) {
+                    setState(() => _selectedDateRange = picked);
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(6)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    textDirection: TextDirection.rtl,
+                    children: [
+                      const Icon(Icons.date_range, size: 18, color: Color(0xFF4A78B9)),
+                      const SizedBox(width: 8),
+                      const Text('من: ', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
+                      _buildStrictDateText(_selectedDateRange.start),
+                      const SizedBox(width: 15),
+                      const Text('إلى: ', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
+                      _buildStrictDateText(_selectedDateRange.end),
+                    ],
                   ),
-                ],
+                ),
               ),
               const Divider(height: 20),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('daily_entries')
                       .where('site', isEqualTo: widget.selectedSite)
-                      .orderBy('date', descending: true)
                       .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52)));
                     }
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+
+                    if (snapshot.hasError) {
+                      return const Center(
+                        child: Text(
+                          'حدث خطأ أثناء تحميل البيانات',
+                          style: TextStyle(fontFamily: 'Cairo', color: Colors.red),
+                        ),
+                      );
+                    }
+
+                    final docs = snapshot.data?.docs ?? const [];
+                    if (docs.isEmpty) {
                       return const Center(child: Text('لا توجد بيانات مسجلة', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)));
                     }
 
-                    var filteredDocs = snapshot.data!.docs.where((doc) {
+                    var filteredDocs = docs.where((doc) {
                       var data = doc.data() as Map<String, dynamic>;
-                      Timestamp? ts = data['date'] as Timestamp?;
-                      if (ts == null) return false;
-                      DateTime docDate = ts.toDate();
+                      final docDate = _extractEntryDate(data);
+                      if (docDate == null) return false;
 
                       DateTime cleanDocDate = DateTime(docDate.year, docDate.month, docDate.day);
-                      DateTime cleanStart = DateTime(startDate.year, startDate.month, startDate.day);
-                      DateTime cleanEnd = DateTime(endDate.year, endDate.month, endDate.day);
+                      DateTime cleanStart = DateTime(_selectedDateRange.start.year, _selectedDateRange.start.month, _selectedDateRange.start.day);
+                      DateTime cleanEnd = DateTime(_selectedDateRange.end.year, _selectedDateRange.end.month, _selectedDateRange.end.day);
 
                       return cleanDocDate.compareTo(cleanStart) >= 0 && cleanDocDate.compareTo(cleanEnd) <= 0;
                     }).toList();
+
+                    filteredDocs.sort((a, b) {
+                      final aDate = _extractEntryDate(a.data() as Map<String, dynamic>) ?? DateTime(1970);
+                      final bDate = _extractEntryDate(b.data() as Map<String, dynamic>) ?? DateTime(1970);
+                      return bDate.compareTo(aDate);
+                    });
 
                     if (filteredDocs.isEmpty) {
                       return const Center(child: Text('لا توجد بيانات في الفترة المحددة', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)));
@@ -1372,13 +1430,18 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
                       itemBuilder: (context, index) {
                         var doc = filteredDocs[index];
                         var data = doc.data() as Map<String, dynamic>;
+
+                        String vNumber = _toArabicNumbers(data['vehicleNumber']?.toString() ?? '');
+                        String dString = _toArabicNumbers(data['dateString']?.toString() ?? '');
+                        String tripsCount = _toArabicNumbers((data['clientsTrips']?.length ?? 0).toString());
+
                         return Card(
                           margin: const EdgeInsets.symmetric(vertical: 4),
                           elevation: 2,
                           child: ListTile(
                             leading: Icon(data['isTractor'] == true ? Icons.local_shipping : Icons.airport_shuttle, color: const Color(0xFF4A78B9)),
-                            title: Text('مركبة: ${data['vehicleNumber']} (${data['dateString'] ?? ''})', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
-                            subtitle: Text('السائق: ${data['driverName']} - ${data['clientsTrips']?.length ?? 0} عملاء', style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
+                            title: Text('مركبة: $vNumber ($dString)', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
+                            subtitle: Text('السائق: ${data['driverName']} - $tripsCount عملاء', style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
                             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
                             onTap: () {
                               widget.onLoadEntry(doc);

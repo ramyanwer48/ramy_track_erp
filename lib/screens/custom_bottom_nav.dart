@@ -4,7 +4,7 @@ import 'daily_entry_screen.dart';
 import 'client_accounts_screen.dart';
 import 'driver_accounts_screen.dart';
 import 'settlements_screen.dart';
-import 'settings_screen.dart';
+import 'office_accounts_screen.dart'; // <-- لاحظ إني افترضت اسم شاشة المكتب هنا، عدلها لو مسميها حاجة تانية
 
 class CustomBottomNav extends StatelessWidget {
   final int currentIndex;
@@ -30,8 +30,10 @@ class CustomBottomNav extends StatelessWidget {
             _buildNavItem(context, icon: Icons.receipt_long_rounded, label: 'البيان', index: 1, targetScreen: const DailyEntryScreen()),
             _buildNavItem(context, icon: Icons.people_alt_rounded, label: 'العملاء', index: 2, targetScreen: const ClientAccountsScreen()),
             _buildNavItem(context, icon: Icons.local_shipping_rounded, label: 'السائقين', index: 3, targetScreen: const DriverAccountsScreen()),
-            _buildNavItem(context, icon: Icons.business_rounded, label: 'المكتب', index: 4, targetScreen: const SettlementsScreen()),
-            _buildNavItem(context, icon: Icons.settings_rounded, label: 'الإعدادات', index: 5, targetScreen: const SettingsScreen()),
+            // هنا غيرنا الاسم لـ الخصومات والتسويات مع الاحتفاظ بشاشة SettlementsScreen
+            _buildNavItem(context, icon: Icons.account_balance_wallet_rounded, label: 'الخصومات والتسويات', index: 4, targetScreen: const SettlementsScreen()),
+            // هنا شيلنا الإعدادات وحطينا المكتب
+            _buildNavItem(context, icon: Icons.business_rounded, label: 'المكتب', index: 5, targetScreen: const OfficeAccountsScreen()),
           ],
         ),
       ),
@@ -57,6 +59,11 @@ class CustomBottomNav extends StatelessWidget {
               if (!canLeave) return;
             }
 
+            // ===============================================
+            // سطر الحماية ضد الـ async gap اللي بيمنع الـ Warnings
+            if (!context.mounted) return;
+            // ===============================================
+
             if (index == 0) {
               Navigator.pushAndRemoveUntil(
                 context,
@@ -81,7 +88,7 @@ class CustomBottomNav extends StatelessWidget {
           children: [
             Icon(icon, color: isSelected ? const Color(0xFF00D2FF) : Colors.white54, size: 24),
             const SizedBox(height: 4),
-            FittedBox(
+            FittedBox( // الـ FittedBox هيصغر الخط شوية لو الكلمة طويلة زي "الخصومات والتسويات" عشان متضربش
               fit: BoxFit.scaleDown,
               child: Text(
                 label,
