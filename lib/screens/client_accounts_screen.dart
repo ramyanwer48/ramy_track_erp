@@ -472,13 +472,17 @@ class _ClientAccountsScreenState extends State<ClientAccountsScreen> {
                                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                               child: InkWell(
                                                 onTap: () {
+                                                  // انتقال فوري وصاروخي بدون أي تأخير أو تأثير Fade
                                                   Navigator.push(
                                                     context,
-                                                    MaterialPageRoute(
-                                                      builder: (context) => ClientDetailsScreen(
+                                                    PageRouteBuilder(
+                                                      pageBuilder: (context, animation, secondaryAnimation) => ClientDetailsScreen(
                                                         clientName: client['name'],
                                                         openingBalance: 0.0,
                                                       ),
+                                                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                                        return child;
+                                                      },
                                                     ),
                                                   );
                                                 },

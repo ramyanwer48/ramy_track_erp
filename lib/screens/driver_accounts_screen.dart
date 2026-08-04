@@ -182,13 +182,20 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                 }
 
                                 double netRemaining = totalDues - totalPayments;
+                                bool isActive = totalTripsCount > 0;
+
+                                // فلترة ذكية: إذا كان السائق لم يعمل نهائياً وليس لديه رصيد أو مديونية، يتم استبعاده تماماً
+                                if (!isActive && netRemaining == 0) {
+                                  continue;
+                                }
+
                                 totalDriversDueAll += netRemaining;
 
                                 driversList.add({
                                   'name': driverName,
                                   'number': vehicleNum,
                                   'due': netRemaining,
-                                  'active': totalTripsCount > 0,
+                                  'active': isActive,
                                 });
                               }
 
@@ -253,6 +260,9 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
+                                        // سجل السائقين على اليمين
+                                        const Text('سجل السائقين', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0F2A52))),
+                                        // إضافة سائق على الشمال
                                         ElevatedButton.icon(
                                           onPressed: _showAddDriverDialog,
                                           icon: const Icon(Icons.add, color: Colors.white, size: 18),
@@ -264,14 +274,13 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                             elevation: 0,
                                           ),
                                         ),
-                                        const Text('سجل السائقين', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0F2A52))),
                                       ],
                                     ),
                                   ),
 
                                   Expanded(
                                     child: driversList.isEmpty
-                                        ? const Center(child: Text('لا يوجد سائقين شركة مسجلين.', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)))
+                                        ? const Center(child: Text('لا يوجد سائقين شركة مسجلين أو لديهم نشاط.', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)))
                                         : GridView.builder(
                                       padding: const EdgeInsets.all(12),
                                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -285,7 +294,6 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                         var driver = driversList[index];
                                         double netRemaining = driver['due'];
 
-                                        // المنطق المحاسبي الذكي الجديد (له / عليه / خالص)
                                         Color statusColor;
                                         String statusText;
 
@@ -307,9 +315,18 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                           clipBehavior: Clip.antiAlias,
                                           child: InkWell(
                                             onTap: () {
+                                              // انتقال فوري وصاروخي بدون أي تأخير أو تدرج بصري ثقيل
                                               Navigator.push(
                                                 context,
-                                                MaterialPageRoute(builder: (context) => DriverDetailsScreen(driverName: driver['name'], vehicleNumber: driver['number'])),
+                                                PageRouteBuilder(
+                                                  pageBuilder: (context, animation, secondaryAnimation) => DriverDetailsScreen(
+                                                    driverName: driver['name'],
+                                                    vehicleNumber: driver['number'],
+                                                  ),
+                                                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                                    return child;
+                                                  },
+                                                ),
                                               );
                                             },
                                             child: Container(
@@ -355,7 +372,7 @@ class _DriverAccountsScreenState extends State<DriverAccountsScreen> {
                                                         const Icon(Icons.access_time, size: 13, color: Colors.grey),
                                                         const SizedBox(width: 4),
                                                         Text(
-                                                          driver['active'] ? 'آخر شغل: نشط' : 'آخر شغل: لم يبدأ بعد',
+                                                          driver['active'] ? 'آخر شغل: نشط' : 'آخر شغل: غير متاح',
                                                           style: const TextStyle(fontFamily: 'Cairo', fontSize: 10, color: Colors.grey),
                                                         ),
                                                       ],

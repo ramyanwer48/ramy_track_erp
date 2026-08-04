@@ -50,6 +50,7 @@ dependencies:
   path_provider: ^2.1.5
   pdf: ^3.11.1  # زود السطر ده هنا
   fl_chart: ^0.68.0
+  image_picker: ^1.1.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

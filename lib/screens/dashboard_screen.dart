@@ -12,7 +12,8 @@ import 'office_accounts_screen.dart';
 import 'loader_accounts_screen.dart';
 import 'custom_bottom_nav.dart';
 import 'control_panel_screen.dart';
-import 'reports_screen.dart'; // <-- استدعاء شاشة التقارير
+import 'reports_screen.dart';
+import 'ai_daily_entry_screen.dart'; // <-- استدعاء شاشة الذكاء الاصطناعي الجديدة
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -37,7 +38,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // 🔴 نافذة الإشعارات المربوطة بالفايربيز لايف 🔴
   void _showNotificationsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -53,7 +53,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const Expanded(
                 child: Text('الإشعارات', style: TextStyle(color: Colors.white, fontSize: 16, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
               ),
-              // زرار مسح جميع الإشعارات
               IconButton(
                 icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
                 tooltip: 'مسح جميع الإشعارات',
@@ -72,7 +71,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 400),
               child: StreamBuilder<QuerySnapshot>(
-                // سحب الإشعارات وترتيبها من الأحدث للأقدم
                 stream: FirebaseFirestore.instance.collection('notifications').orderBy('timestamp', descending: true).snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -97,7 +95,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       String title = data['title'] ?? 'إشعار جديد';
                       String body = data['body'] ?? '';
 
-                      // تنسيق الوقت
                       String timeText = 'الآن';
                       if (data['timestamp'] != null) {
                         DateTime dt = (data['timestamp'] as Timestamp).toDate();
@@ -108,7 +105,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
                         leading: Container(
                           padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), shape: BoxShape.circle),
                           child: const Icon(Icons.campaign, color: Color(0xFF00D2FF), size: 18),
                         ),
                         title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
@@ -121,7 +118,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Text(timeText, style: const TextStyle(color: Colors.white38, fontSize: 9, fontFamily: 'Cairo')),
                           ],
                         ),
-                        // زرار مسح إشعار محدد
                         trailing: IconButton(
                           icon: const Icon(Icons.close, color: Colors.white54, size: 18),
                           onPressed: () => doc.reference.delete(),
@@ -248,8 +244,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-
-              // 🔴 جرس الإشعارات المربوط بالفايربيز 🔴
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('notifications').snapshots(),
                 builder: (context, snapshot) {
@@ -351,7 +345,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.only(top: 5),
           child: Column(
             children: [
-              // 1. قسم مرحباً بك
               Expanded(
                 flex: 14,
                 child: Container(
@@ -442,7 +435,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              // 2. كارت الذكاء الاصطناعي
+              // --- زرار إدخال البيان بالذكاء الاصطناعي (مفعل بالانتقال الصاروخي الفوري) ---
               Expanded(
                 flex: 9,
                 child: Container(
@@ -455,11 +448,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     borderRadius: BorderRadius.circular(15),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 5, offset: const Offset(0, 2))
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 5, offset: const Offset(0, 2))
                     ],
                   ),
                   child: InkWell(
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          pageBuilder: (context, animation, secondaryAnimation) => const AiDailyEntryScreen(),
+                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                            return child; // انتقال فوري وصاروخي بدون أي تأخير
+                          },
+                        ),
+                      );
+                    },
                     borderRadius: BorderRadius.circular(15),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -467,7 +470,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
                             child: const Icon(Icons.document_scanner, color: Colors.white, size: 26),
                           ),
                           const SizedBox(width: 12),
@@ -489,13 +492,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
 
-              // 3. كارت حساب الشيخ محمد
-              const Expanded(
+              Expanded(
                 flex: 9,
-                child: SheikhMohamedDashboardCard(),
+                child: const SheikhMohamedDashboardCard(),
               ),
 
-              // 4. شبكة الأقسام
               Expanded(
                 flex: 48,
                 child: Padding(
@@ -538,11 +539,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             _buildGridCard(context, title: 'حسابات اللودر', icon: Icons.front_loader, color: Colors.amber.shade700, onTap: () {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const LoaderAccountsScreen()));
                             }),
-                            // تفعيل زر لوحة التحكم
                             _buildGridCard(context, title: 'لوحة التحكم', icon: Icons.pie_chart, color: Colors.red, onTap: () {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const ControlPanelScreen()));
                             }),
-                            // تفعيل زر التقارير
                             _buildGridCard(context, title: 'التقارير', icon: Icons.bar_chart, color: Colors.deepPurple, onTap: () {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => const ReportsScreen()));
                             }),
@@ -617,7 +616,8 @@ class SheikhMohamedDashboardCard extends StatelessWidget {
   }
 
   String _formatNumber(double amount) {
-    return amount.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+    String numStr = amount % 1 == 0 ? amount.toInt().toString() : amount.toStringAsFixed(1);
+    return numStr.replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
   }
 
   @override
@@ -644,15 +644,29 @@ class SheikhMohamedDashboardCard extends StatelessWidget {
                       if (tripsSnapshot.hasData) {
                         for (var doc in tripsSnapshot.data!.docs) {
                           var data = doc.data() as Map<String, dynamic>;
-                          String clientName = (data['clientName'] ?? data['client_name'] ?? '').toString().trim();
-                          String carType = (data['carType'] ?? data['vehicleType'] ?? data['type'] ?? '').toString().trim();
 
-                          if ((clientName.contains('بخيت') || clientName.contains('عادل')) && (carType.contains('جرار') || carType.contains('جرارات'))) {
-                            double cubage = double.tryParse(data['totalCubage']?.toString() ?? data['cubage']?.toString() ?? '0') ?? 0.0;
-                            totalTractorMeters += cubage;
+                          String site = data['site']?.toString() ?? 'old';
+                          if (site != 'new' && site != 'الموقع الجديد') continue;
+
+                          bool isTractor = data['isTractor'] ?? false;
+                          if (!isTractor) continue;
+
+                          List<dynamic> cTrips = data['clientsTrips'] ?? [];
+                          for (var c in cTrips) {
+                            int tripsCount = int.tryParse((c['tripsCount'] ?? c['trips'] ?? '0').toString()) ?? 0;
+                            if (tripsCount > 0) {
+                              double cubage = double.tryParse((c['totalCubage'] ?? c['cubage'] ?? '0').toString()) ?? 0.0;
+                              if (cubage == 0) {
+                                double vCubage = double.tryParse(data['cubage']?.toString() ?? '0') ?? 0.0;
+                                cubage = tripsCount * vCubage;
+                              }
+                              totalTractorMeters += cubage;
+                            }
                           }
                         }
                       }
+
+                      double totalDues = totalTractorMeters * meterPrice;
 
                       double totalPayments = 0.0;
                       if (paymentsSnapshot.hasData) {
@@ -662,52 +676,73 @@ class SheikhMohamedDashboardCard extends StatelessWidget {
                         }
                       }
 
-                      double netRemaining = (totalTractorMeters * meterPrice) - totalPayments;
-                      bool isClear = netRemaining <= 0;
+                      double netRemaining = totalDues - totalPayments;
+                      bool isSheikhOwed = netRemaining >= 0;
+                      Color statusColor = isSheikhOwed ? Colors.green.shade700 : Colors.red.shade700;
 
                       return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(15),
                           border: Border.all(color: Colors.amber.shade600, width: 1.5),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
+                            BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))
                           ],
                         ),
                         child: InkWell(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SheikhMohamedScreen())),
                           borderRadius: BorderRadius.circular(15),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             child: Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.all(6),
+                                  padding: const EdgeInsets.all(5),
                                   decoration: BoxDecoration(color: Colors.amber.shade50, shape: BoxShape.circle),
-                                  child: const Text('🚛', style: TextStyle(fontSize: 26)),
+                                  child: const Text('🚛', style: TextStyle(fontSize: 20)),
                                 ),
-                                const SizedBox(width: 12),
-                                const Expanded(
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 6,
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Text('حساب الشيخ محمد', style: TextStyle(color: Color(0xFF0F2A52), fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
-                                      Text('نسبة الجرارات (الموقع الجديد)', style: TextStyle(color: Colors.grey, fontSize: 10, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                      const FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerRight,
+                                        child: Text(
+                                          'حساب الشيخ محمد',
+                                          style: TextStyle(color: Color(0xFF0F2A52), fontSize: 14.5, fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text('أمتار الجرارات (الموقع الجديد)', style: TextStyle(color: Colors.grey.shade600, fontSize: 8.5, fontFamily: 'Cairo', fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                                     ],
                                   ),
                                 ),
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text('المتبقي', style: TextStyle(color: isClear ? Colors.green : Colors.red, fontSize: 10, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
-                                    Text('${_toArabicNumbers(_formatNumber(netRemaining))} ج', style: TextStyle(color: isClear ? Colors.green : Colors.red, fontSize: 16, fontWeight: FontWeight.w900, fontFamily: 'Cairo')),
-                                  ],
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text('صافي المتبقي', style: TextStyle(color: statusColor, fontSize: 8.5, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 1),
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          '${_toArabicNumbers(_formatNumber(netRemaining))} ج',
+                                          style: TextStyle(color: statusColor, fontSize: 13.5, fontWeight: FontWeight.w900, fontFamily: 'Cairo'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(width: 5),
-                                const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 12),
                               ],
                             ),
                           ),

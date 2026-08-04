@@ -75,7 +75,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
     super.dispose();
   }
 
-  // دالة موحدة لمعالجة واستخراج كافة بيانات السائق (النقلات، الدفعات، والمجاميع)
+  // دالة موحدة لمعالجة واستخراج كافة بيانات السائق (مع التحقق من وجود نشاط فعلي)
   Map<String, dynamic> _calculateDriverData(QuerySnapshot? settingsSnap, QuerySnapshot? tripsSnap, QuerySnapshot? paymentsSnap, String targetNorm) {
     double oldSiteRate = 40.0;
     double newSiteRate = 34.0;
@@ -92,6 +92,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
     double totalCubage = 0.0;
     double totalOldSiteCubage = 0.0;
     double totalNewSiteCubage = 0.0;
+    bool hasActiveWork = false; // التحقق مما إذا كان السائق قد عمل فعلاً
 
     List<Map<String, dynamic>> driverTrips = [];
     List<Map<String, dynamic>> driverPayments = [];
@@ -99,7 +100,16 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
     if (tripsSnap != null) {
       for (var tripDoc in tripsSnap.docs) {
         var tData = tripDoc.data() as Map<String, dynamic>;
-        if (_normalizeArabic(tData['driverName']?.toString() ?? '') == targetNorm) {
+
+        // التحقق من الحقول المختلفة لاسم السائق للتأكد من شمولية البيانات
+        String dName1 = tData['driverName']?.toString() ?? '';
+        String dName2 = tData['driver_name']?.toString() ?? '';
+        String dName3 = tData['driver']?.toString() ?? '';
+
+        if (_normalizeArabic(dName1) == targetNorm ||
+            _normalizeArabic(dName2) == targetNorm ||
+            _normalizeArabic(dName3) == targetNorm) {
+
           String site = tData['site'] ?? 'old';
           double rate = site == 'new' ? newSiteRate : oldSiteRate;
           double vehicleCubage = double.tryParse(tData['cubage']?.toString() ?? '0') ?? 0.0;
@@ -109,6 +119,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
           for (var c in cTrips) {
             int tripsCount = (c['tripsCount'] ?? c['trips'] ?? 0) as int;
             if (tripsCount > 0) {
+              hasActiveWork = true; // وجدنا نقلات فعلية لهذا السائق
               double cubage = double.tryParse(c['totalCubage']?.toString() ?? c['cubage']?.toString() ?? '0') ?? 0.0;
               if (cubage == 0) cubage = tripsCount * vehicleCubage;
 
@@ -171,6 +182,7 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
       'driverTrips': driverTrips,
       'driverPayments': driverPayments,
       'netRemaining': netRemaining,
+      'hasActiveWork': hasActiveWork, // مؤشر النشاط الفعلي
     };
   }
 
@@ -229,7 +241,6 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
     }
   }
 
-  // تصدير إكسيل تفصيلي ومضبوط من اليمين لليسار
   Future<void> _exportToExcel(Map<String, dynamic> data) async {
     Navigator.pop(context);
     try {
@@ -252,7 +263,6 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
       sheet.appendRow([TextCellValue('كشف حساب السائق: ${widget.driverName} (رقم المركبة: ${widget.vehicleNumber})')]);
       sheet.appendRow([TextCellValue('')]);
 
-      // جدول النقلات
       sheet.appendRow([TextCellValue('--- سجل النقلات التفصيلي ---')]);
       sheet.appendRow([TextCellValue('التاريخ'), TextCellValue('الموقع'), TextCellValue('العميل'), TextCellValue('التفاصيل الكمية'), TextCellValue('السعر'), TextCellValue('الإجمالي')]);
       for (var t in trips) {
@@ -267,7 +277,6 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
       }
 
       sheet.appendRow([TextCellValue('')]);
-      // جدول الدفعات
       sheet.appendRow([TextCellValue('--- سجل الدفعات والسلف ---')]);
       sheet.appendRow([TextCellValue('التاريخ'), TextCellValue('الملاحظات'), TextCellValue('المبلغ')]);
       for (var p in payments) {
@@ -279,7 +288,6 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
       }
 
       sheet.appendRow([TextCellValue('')]);
-      // الملخص النهائي
       sheet.appendRow([TextCellValue('--- الملخص المحاسبي النهائي ---')]);
       sheet.appendRow([TextCellValue('البند المحاسبي'), TextCellValue('التفاصيل والكميات'), TextCellValue('الإجمالي')]);
       sheet.appendRow([TextCellValue('الموقع القديم'), TextCellValue('عدد الأمتار: ${oldCubage.toStringAsFixed(1)} م³ | السعر: ${oldRate.toStringAsFixed(0)} ج'), TextCellValue('${(oldCubage * oldRate).toStringAsFixed(0)} ج.م')]);
@@ -299,7 +307,6 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
     }
   }
 
-  // تصدير وورد تفصيلي ومضبوط تماماً من اليمين لليسار (RTL)
   Future<void> _exportToWord(Map<String, dynamic> data) async {
     Navigator.pop(context);
     try {
@@ -435,7 +442,6 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
                       stream: FirebaseFirestore.instance.collection('driver_payments').snapshots(),
                       builder: (context, paymentsSnap) {
 
-                        // استخدام الدالة الموحدة لجلب كافة البيانات وتجهيزها للتصدير
                         var driverData = _calculateDriverData(settingsSnap.data, tripsSnap.data, paymentsSnap.data, targetNorm);
 
                         return Row(
@@ -483,6 +489,21 @@ class _DriverDetailsScreenState extends State<DriverDetailsScreen> with SingleTi
                     builder: (context, paymentsSnap) {
 
                       var driverData = _calculateDriverData(settingsSnap.data, tripsSnap.data, paymentsSnap.data, targetNorm);
+
+                      // فحص ما إذا كان السائق قد عمل فعلاً أم لا
+                      bool hasActiveWork = driverData['hasActiveWork'];
+                      if (!hasActiveWork) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(20.0),
+                            child: Text(
+                              'هذا السائق ليس لديه أي نقلات أو أعمال مسجلة خلال الفترة الحالية.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontFamily: 'Cairo', fontSize: 14, color: Colors.grey, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        );
+                      }
 
                       double oldSiteRate = driverData['oldSiteRate'];
                       double newSiteRate = driverData['newSiteRate'];
