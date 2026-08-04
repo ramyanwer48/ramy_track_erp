@@ -9,7 +9,10 @@ import 'settlements_screen.dart';
 import 'sheikh_mohamed_screen.dart';
 import 'driver_accounts_screen.dart';
 import 'office_accounts_screen.dart';
+import 'loader_accounts_screen.dart';
 import 'custom_bottom_nav.dart';
+import 'control_panel_screen.dart';
+import 'reports_screen.dart'; // <-- استدعاء شاشة التقارير
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -34,6 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // 🔴 نافذة الإشعارات المربوطة بالفايربيز لايف 🔴
   void _showNotificationsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -41,33 +45,98 @@ class _DashboardScreenState extends State<DashboardScreen> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: const Color(0xFF103667),
-          title: const Row(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Row(
             children: [
-              Icon(Icons.notifications, color: Color(0xFF00D2FF)),
-              SizedBox(width: 8),
-              Text('الإشعارات', style: TextStyle(color: Colors.white, fontSize: 16, fontFamily: 'Cairo')),
+              const Icon(Icons.notifications_active, color: Color(0xFF00D2FF)),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('الإشعارات', style: TextStyle(color: Colors.white, fontSize: 16, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+              ),
+              // زرار مسح جميع الإشعارات
+              IconButton(
+                icon: const Icon(Icons.delete_sweep, color: Colors.redAccent),
+                tooltip: 'مسح جميع الإشعارات',
+                onPressed: () async {
+                  var snap = await FirebaseFirestore.instance.collection('notifications').get();
+                  for (var doc in snap.docs) {
+                    await doc.reference.delete();
+                  }
+                  if (context.mounted) Navigator.pop(context);
+                },
+              ),
             ],
           ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(Icons.check_circle, color: Colors.green),
-                title: Text('تم حفظ بيان اليوم بنجاح', style: TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Cairo')),
-                subtitle: Text('منذ 10 دقائق', style: TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Cairo')),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 400),
+              child: StreamBuilder<QuerySnapshot>(
+                // سحب الإشعارات وترتيبها من الأحدث للأقدم
+                stream: FirebaseFirestore.instance.collection('notifications').orderBy('timestamp', descending: true).snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: Color(0xFF00D2FF)));
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: Text('لا توجد إشعارات جديدة حالياً.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontFamily: 'Cairo')),
+                    );
+                  }
+
+                  return ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: snapshot.data!.docs.length,
+                    separatorBuilder: (context, index) => const Divider(color: Colors.white24, height: 1),
+                    itemBuilder: (context, index) {
+                      var doc = snapshot.data!.docs[index];
+                      var data = doc.data() as Map<String, dynamic>;
+
+                      String title = data['title'] ?? 'إشعار جديد';
+                      String body = data['body'] ?? '';
+
+                      // تنسيق الوقت
+                      String timeText = 'الآن';
+                      if (data['timestamp'] != null) {
+                        DateTime dt = (data['timestamp'] as Timestamp).toDate();
+                        timeText = '${dt.hour}:${dt.minute.toString().padLeft(2, '0')} | ${dt.day}/${dt.month}/${dt.year}';
+                      }
+
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                          child: const Icon(Icons.campaign, color: Color(0xFF00D2FF), size: 18),
+                        ),
+                        title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 2),
+                            Text(body, style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'Cairo')),
+                            const SizedBox(height: 4),
+                            Text(timeText, style: const TextStyle(color: Colors.white38, fontSize: 9, fontFamily: 'Cairo')),
+                          ],
+                        ),
+                        // زرار مسح إشعار محدد
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white54, size: 18),
+                          onPressed: () => doc.reference.delete(),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
-              Divider(color: Colors.white24),
-              ListTile(
-                leading: Icon(Icons.info, color: Color(0xFF00D2FF)),
-                title: Text('تحديث جديد لبيانات السائقين', style: TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Cairo')),
-                subtitle: Text('منذ ساعة', style: TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Cairo')),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إغلاق', style: TextStyle(color: Color(0xFF00D2FF), fontFamily: 'Cairo')),
+              child: const Text('إغلاق', style: TextStyle(color: Color(0xFF00D2FF), fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -179,25 +248,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_none, color: Colors.white, size: 26),
-                    onPressed: () => _showNotificationsDialog(context),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  Positioned(
-                    top: 2,
-                    right: 2,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                      child: const Text('3', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
+
+              // 🔴 جرس الإشعارات المربوط بالفايربيز 🔴
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('notifications').snapshots(),
+                builder: (context, snapshot) {
+                  int notifCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notifications_none, color: Colors.white, size: 26),
+                        onPressed: () => _showNotificationsDialog(context),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      if (notifCount > 0)
+                        Positioned(
+                          top: 2,
+                          right: 2,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                            child: Text(
+                              notifCount > 9 ? '+9' : notifCount.toString(),
+                              style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -454,9 +535,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Expanded(
                         child: Row(
                           children: [
-                            _buildGridCard(context, title: 'حسابات اللودر', icon: Icons.front_loader, color: Colors.amber.shade700, onTap: () {}),
-                            _buildGridCard(context, title: 'لوحة التحكم', icon: Icons.pie_chart, color: Colors.red, onTap: () {}),
-                            _buildGridCard(context, title: 'التقارير', icon: Icons.bar_chart, color: Colors.deepPurple, onTap: () {}),
+                            _buildGridCard(context, title: 'حسابات اللودر', icon: Icons.front_loader, color: Colors.amber.shade700, onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const LoaderAccountsScreen()));
+                            }),
+                            // تفعيل زر لوحة التحكم
+                            _buildGridCard(context, title: 'لوحة التحكم', icon: Icons.pie_chart, color: Colors.red, onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const ControlPanelScreen()));
+                            }),
+                            // تفعيل زر التقارير
+                            _buildGridCard(context, title: 'التقارير', icon: Icons.bar_chart, color: Colors.deepPurple, onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => const ReportsScreen()));
+                            }),
                           ],
                         ),
                       ),
