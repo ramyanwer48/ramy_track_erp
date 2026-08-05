@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'signup_screen.dart';
 import 'dashboard_screen.dart';
 
@@ -23,6 +24,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   String _currentLanguage = 'العربية';
 
   final LocalAuthentication auth = LocalAuthentication();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -31,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _loadSavedData();
+    _checkInitialBiometricLogin();
 
     _pulseController = AnimationController(
       vsync: this,
@@ -39,6 +42,165 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.3).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  // --- ميزة البصمة التلقائية (مع انتظار اكتمال الرسم 100% لمنع الشاشة السوداء) ---
+  Future<void> _checkInitialBiometricLogin() async {
+    String? isBiometricEnabled = await _secureStorage.read(key: 'biometric_enabled');
+
+    if (isBiometricEnabled == 'true') {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (mounted) {
+          _handleFingerprint(autoLogin: true);
+        }
+      });
+    }
+  }
+
+  // --- دالة البصمة البنكية (تم التعديل لتتوافق مع إصدار المكتبة لديك) ---
+  Future<void> _handleFingerprint({bool autoLogin = false}) async {
+    try {
+      String? isEnabled = await _secureStorage.read(key: 'biometric_enabled');
+      if (isEnabled != 'true') {
+        if (!autoLogin) _showCenteredSnackBar('⚠️ يرجى تسجيل الدخول بالبريد وكلمة المرور أولاً لتفعيل البصمة', Colors.orange);
+        return;
+      }
+
+      final bool canCheck = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+      if (!canCheck) {
+        if (!autoLogin) _showCenteredSnackBar(_getText('no_fingerprint'), Colors.redAccent);
+        return;
+      }
+
+      final bool didAuthenticate = await auth.authenticate(
+        localizedReason: _getText('fingerprint_prompt'),
+      );
+
+      // إجبار فلاتر على إعادة رسم الشاشة فوراً فور انتهاء/إغلاق نافذة البصمة
+      if (mounted) {
+        setState(() {});
+      }
+
+      if (didAuthenticate) {
+        String? savedEmail = await _secureStorage.read(key: 'bio_email');
+        String? savedPassword = await _secureStorage.read(key: 'bio_password');
+
+        if (savedEmail != null && savedPassword != null) {
+          if (!mounted) return;
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFF00D2FF))),
+          );
+
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: savedEmail,
+            password: savedPassword,
+          );
+
+          if (!mounted) return;
+          Navigator.pop(context); // إغلاق مؤشر التحميل
+          ScaffoldMessenger.of(context).clearSnackBars();
+          _goToDashboard();
+        } else {
+          if (!autoLogin) _showCenteredSnackBar('❌ بيانات البصمة غير صالحة، يرجى تسجيل الدخول يدوياً', Colors.redAccent);
+        }
+      }
+    } on PlatformException catch (e) {
+      if (mounted) setState(() {});
+      if (!autoLogin) _showCenteredSnackBar('❌ ${e.code}', Colors.redAccent);
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        setState(() {});
+      }
+      if (!autoLogin) _showCenteredSnackBar('❌ حدث خطأ في الاتصال بالخادم', Colors.redAccent);
+    }
+  }
+
+  // --- الدالة الذكية لسؤال المستخدم عن تفعيل البصمة لأول مرة ---
+  Future<void> _checkAndPromptBiometricSetup(String email, String password) async {
+    try {
+      bool canCheck = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+      if (canCheck) {
+        final prefs = await SharedPreferences.getInstance();
+        bool alreadyPrompted = prefs.getBool('biometric_prompted') ?? false;
+        String? isBiometricEnabled = await _secureStorage.read(key: 'biometric_enabled');
+
+        if (!alreadyPrompted && isBiometricEnabled != 'true') {
+          if (!mounted) return;
+
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => Directionality(
+              textDirection: _currentLanguage == 'العربية' ? TextDirection.rtl : TextDirection.ltr,
+              child: AlertDialog(
+                backgroundColor: const Color(0xFF0B172A),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  side: const BorderSide(color: Color(0xFF1E2D4A)),
+                ),
+                title: Row(
+                  children: [
+                    const Icon(Icons.fingerprint, color: Color(0xFF00D2FF)),
+                    const SizedBox(width: 8),
+                    Text(
+                      _getText('bio_prompt_title'),
+                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                content: Text(
+                  _getText('bio_prompt_desc'),
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () async {
+                      await prefs.setBool('biometric_prompted', true);
+                      await _secureStorage.write(key: 'biometric_enabled', value: 'false');
+                      if (context.mounted) Navigator.pop(context);
+                      _goToDashboard();
+                    },
+                    child: Text(_getText('bio_prompt_later'), style: const TextStyle(color: Colors.white54)),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0072FF),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () async {
+                      await prefs.setBool('biometric_prompted', true);
+                      await _secureStorage.write(key: 'biometric_enabled', value: 'true');
+                      await _secureStorage.write(key: 'bio_email', value: email);
+                      await _secureStorage.write(key: 'bio_password', value: password);
+
+                      if (context.mounted) Navigator.pop(context);
+                      _goToDashboard();
+                    },
+                    child: Text(_getText('bio_prompt_enable'), style: const TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            ),
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Biometric prompt error: $e');
+    }
+    _goToDashboard();
+  }
+
+  void _goToDashboard() {
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const DashboardScreen()),
     );
   }
 
@@ -59,11 +221,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         'fingerprint_sub': 'للدخول السريع والأمن',
         'google_btn': 'متابعة باستخدام Google',
         'signup_btn': 'إنشاء حساب جديد',
-        'login_success': '✅ تم تسجيل الدخول بنجاح!',
         'enter_credentials': '⚠️ برجاء إدخال البريد الإلكتروني وكلمة المرور أولاً',
-        'google_success': '✅ تم تسجيل الدخول بواسطة Google بنجاح!',
         'google_fail': '❌ فشل تسجيل الدخول باستخدام Google',
-        'fingerprint_success': '✅ تم تسجيل الدخول بالبصمة بنجاح!',
         'no_fingerprint': '❌ جهازك لا يدعم تسجيل الدخول بالبصمة',
         'fingerprint_prompt': 'قم بوضع إصبعك على المستشعر لتسجيل الدخول',
         'err_not_found': 'لا يوجد حساب مسجل بهذا البريد الإلكتروني',
@@ -76,6 +235,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         'send_link': 'إرسال الرابط',
         'reset_success': '✅ تم إرسال رابط استعادة كلمة المرور إلى بريدك بنجاح.',
         'reset_fail': '❌ حدث خطأ، تأكد من صحة البريد الإلكتروني.',
+        'bio_prompt_title': 'تفعيل الدخول بالبصمة',
+        'bio_prompt_desc': 'هل ترغب في تفعيل تسجيل الدخول بالبصمة لتسجيل الدخول السريع والآمن في المرات القادمة دون الحاجة لكتابة كلمة المرور؟',
+        'bio_prompt_later': 'لاحقاً',
+        'bio_prompt_enable': 'تفعيل الآن',
       },
       'English': {
         'subtitle': 'Transport & Accounts Management',
@@ -92,11 +255,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         'fingerprint_sub': 'For quick and secure access',
         'google_btn': 'Continue with Google',
         'signup_btn': 'Create New Account',
-        'login_success': '✅ Logged in successfully!',
         'enter_credentials': '⚠️ Please enter email and password first',
-        'google_success': '✅ Logged in with Google successfully!',
         'google_fail': '❌ Failed to login with Google',
-        'fingerprint_success': '✅ Fingerprint login successful!',
         'no_fingerprint': '❌ Your device does not support fingerprint',
         'fingerprint_prompt': 'Place your finger on the sensor to login',
         'err_not_found': 'No account found for this email',
@@ -109,6 +269,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         'send_link': 'Send Link',
         'reset_success': '✅ Password reset link sent successfully.',
         'reset_fail': '❌ Error occurred, check your email address.',
+        'bio_prompt_title': 'Enable Fingerprint Login',
+        'bio_prompt_desc': 'Would you like to enable fingerprint login for quick and secure access in the future without typing a password?',
+        'bio_prompt_later': 'Later',
+        'bio_prompt_enable': 'Enable Now',
       }
     };
     return texts[_currentLanguage]![key] ?? key;
@@ -121,8 +285,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('app_language', _currentLanguage);
-
-    _showCenteredSnackBar('تم تغيير اللغة إلى: $_currentLanguage', const Color(0xFF0072FF));
   }
 
   @override
@@ -200,16 +362,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         await prefs.remove('saved_password');
       }
 
-      _showCenteredSnackBar(_getText('login_success'), Colors.green);
-      await Future.delayed(const Duration(milliseconds: 1500));
-
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const DashboardScreen()),
-      );
+      await _checkAndPromptBiometricSetup(email, password);
+
     } on FirebaseAuthException catch (e) {
       String errorMessage = _getText('err_unexpected');
       if (e.code == 'user-not-found') {
@@ -245,16 +402,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
       await FirebaseAuth.instance.signInWithCredential(credential);
 
-      _showCenteredSnackBar(_getText('google_success'), Colors.green);
-      await Future.delayed(const Duration(milliseconds: 1500));
-
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const DashboardScreen()),
-      );
+      _goToDashboard();
+
     } catch (e) {
       debugPrint('Google Sign-In Error: $e');
       _showCenteredSnackBar('الخطأ: ${e.toString()}', Colors.redAccent);
@@ -338,39 +490,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         ),
       ),
     );
-  }
-
-  Future<void> _handleFingerprint() async {
-    try {
-      final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
-      final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
-
-      if (!canAuthenticate) {
-        _showCenteredSnackBar(_getText('no_fingerprint'), Colors.redAccent);
-        return;
-      }
-
-      final bool didAuthenticate = await auth.authenticate(
-        localizedReason: _getText('fingerprint_prompt'),
-      );
-
-      if (didAuthenticate) {
-        _showCenteredSnackBar(_getText('fingerprint_success'), Colors.green);
-        await Future.delayed(const Duration(milliseconds: 1500));
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).clearSnackBars();
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const DashboardScreen()),
-        );
-      }
-    } on PlatformException catch (e) {
-      _showCenteredSnackBar('❌ ${e.code}', Colors.redAccent);
-    } catch (e) {
-      _showCenteredSnackBar('❌ ${e.toString()}', Colors.redAccent);
-    }
   }
 
   @override
@@ -722,7 +841,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   ],
                                 ),
                                 GestureDetector(
-                                  onTap: _handleFingerprint,
+                                  onTap: () => _handleFingerprint(autoLogin: false),
                                   child: Column(
                                     children: [
                                       AnimatedBuilder(

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart'; // تم إضافة مكتبة جوجل
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // تم إضافة مكتبة الخزنة المشفرة
+import 'package:shared_preferences/shared_preferences.dart'; // تم إضافة مكتبة الذاكرة
+import 'login_screen.dart'; // استدعاء شاشة تسجيل الدخول
 import 'daily_entry_screen.dart';
 import 'client_accounts_screen.dart';
 import 'settings_screen.dart';
@@ -13,7 +17,7 @@ import 'loader_accounts_screen.dart';
 import 'custom_bottom_nav.dart';
 import 'control_panel_screen.dart';
 import 'reports_screen.dart';
-import 'ai_daily_entry_screen.dart'; // <-- استدعاء شاشة الذكاء الاصطناعي الجديدة
+import 'ai_daily_entry_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -165,6 +169,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _selectedDate = picked;
       });
+    }
+  }
+
+  // --- دالة تسجيل الخروج الاحترافية (Sign Out) ---
+  Future<void> _handleSignOut(BuildContext context) async {
+    try {
+      // إظهار مؤشر تحميل شيك أثناء الخروج
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFF00D2FF))),
+      );
+
+      // 1. تسجيل الخروج من فايربيز
+      await FirebaseAuth.instance.signOut();
+
+      // 2. تسجيل الخروج من جوجل
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      if (await googleSignIn.isSignedIn()) {
+        await googleSignIn.signOut();
+      }
+
+      // 3. مسح بيانات البصمة من الخزنة المشفرة لزيادة الأمان
+      const secureStorage = FlutterSecureStorage();
+      await secureStorage.write(key: 'biometric_enabled', value: 'false');
+      await secureStorage.delete(key: 'bio_email');
+      await secureStorage.delete(key: 'bio_password');
+
+      // 4. مسح ذاكرة سؤال البصمة عشان يسأله تاني لو دخل بحساب جديد
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('biometric_prompted');
+
+      if (!context.mounted) return;
+      Navigator.pop(context); // إغلاق مؤشر التحميل
+
+      // 5. الرجوع لشاشة تسجيل الدخول ومسح كل الشاشات السابقة من الذاكرة
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+            (route) => false,
+      );
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context); // إغلاق مؤشر التحميل
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('حدث خطأ أثناء تسجيل الخروج: $e', style: const TextStyle(fontFamily: 'Cairo')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
     }
   }
 
@@ -332,6 +385,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                },
+              ),
+              // --- فاصل وزرار تسجيل الخروج ---
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.redAccent),
+                title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                onTap: () {
+                  Navigator.pop(context); // قفل القائمة الجانبية أولاً
+                  _handleSignOut(context);
                 },
               ),
             ],
