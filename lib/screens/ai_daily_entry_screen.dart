@@ -119,7 +119,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   double _defaultOfficePrice = 0.0;
 
   final ImagePicker _picker = ImagePicker();
-  final String geminiApiKey = 'AQ.Ab8RN6LA8OsYir6aOuc0tAeFAB6A5FWtwnwqtVoyDDjkEWH_2Q'; // ⚠️ ضع مفتاح جوجل هنا ⚠️
+  final String geminiApiKey = ''; // ⚠️ ضع مفتاح جوجل هنا ⚠️
 
   @override
   void initState() {
