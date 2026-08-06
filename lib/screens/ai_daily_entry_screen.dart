@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -28,27 +27,6 @@ String _normalizeText(String text) {
       .replaceAll(' ', '');
 }
 
-int _levenshteinDistance(String s, String t) {
-  if (s == t) return 0;
-  if (s.isEmpty) return t.length;
-  if (t.isEmpty) return s.length;
-
-  List<int> v0 = List<int>.generate(t.length + 1, (i) => i);
-  List<int> v1 = List<int>.filled(t.length + 1, 0);
-
-  for (int i = 0; i < s.length; i++) {
-    v1[0] = i + 1;
-    for (int j = 0; j < t.length; j++) {
-      int cost = (s[i] == t[j]) ? 0 : 1;
-      v1[j + 1] = [v1[j] + 1, v0[j + 1] + 1, v0[j] + cost].reduce(min);
-    }
-    for (int j = 0; j < v0.length; j++) {
-      v0[j] = v1[j];
-    }
-  }
-  return v1[t.length];
-}
-
 class DestinationRecord {
   TextEditingController clientCtrl = TextEditingController();
   TextEditingController tripsCtrl = TextEditingController();
@@ -68,19 +46,16 @@ class DriverEntryRecord {
   TextEditingController carNumberCtrl = TextEditingController();
   TextEditingController cubageCtrl = TextEditingController();
   List<DestinationRecord> destinations = [];
-  String site = 'new';
 
   DriverEntryRecord({
     String driver = '',
     String carNumber = '',
     String cubage = '0',
-    String siteVal = 'new',
     List<DestinationRecord> destList = const [],
   }) {
     driverCtrl.text = driver;
     carNumberCtrl.text = carNumber;
     cubageCtrl.text = cubage;
-    site = siteVal;
     destinations = List.from(destList);
   }
   void dispose() {
@@ -105,8 +80,8 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   bool _isAnalyzing = false;
   bool _isDataExtracted = false;
 
-  // 1️⃣ تاريخ البيان المخصص (يأخذ تاريخ اليوم افتراضياً)
   DateTime _selectedDate = DateTime.now();
+  String _globalSite = 'new';
 
   List<DriverEntryRecord> _driverRecords = [];
 
@@ -114,12 +89,13 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   List<Map<String, dynamic>> _vehiclesFromDb = [];
   List<String> _allCarNumbers = [];
 
-  // 5️⃣ متغيرات حفظ الأسعار الافتراضية
   double _defaultClientPrice = 0.0;
   double _defaultOfficePrice = 0.0;
 
   final ImagePicker _picker = ImagePicker();
-  final String geminiApiKey = ''; // ⚠️ ضع مفتاح جوجل هنا ⚠️
+
+  // ⚠️ حط مفتاح جوجل الجديد هنا ⚠️
+  final String geminiApiKey = '';
 
   @override
   void initState() {
@@ -224,7 +200,6 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   Future<void> _analyzeImageWithAI() async {
     if (_selectedImage == null) return;
 
-    // تم إزالة القفلة التي كانت تمنع التحليل، سيتم المحاولة لجلب البيانات وإكمال التحليل حتى لو لم توجد معدات
     if (_vehiclesFromDb.isEmpty) {
       await _fetchDatabaseData(showMessages: true);
     }
@@ -331,7 +306,6 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
               driver: aiDriverName,
               carNumber: matchedCarNumber,
               cubage: matchedCubage,
-              siteVal: 'new',
               destList: dests,
             );
           }).toList();
@@ -429,11 +403,145 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                 driverRec.cubageCtrl.text = vehicle['cubage'].toString();
                                 driverRec.driverCtrl.text = vehicle['name'].toString();
                               });
+                              FocusScope.of(context).unfocus();
                               Navigator.pop(context);
                             },
                           ),
                         );
                       },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAddNewClientDialog(BuildContext sheetContext, DestinationRecord dest) {
+    TextEditingController newClientCtrl = TextEditingController();
+    showDialog(
+        context: context,
+        builder: (dialogCtx) {
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF0A2540),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: const Text('إضافة عميل جديد', style: TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16)),
+              content: TextField(
+                controller: newClientCtrl,
+                style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                decoration: InputDecoration(
+                  hintText: 'اكتب اسم العميل هنا...',
+                  hintStyle: const TextStyle(color: Colors.white54, fontFamily: 'Cairo', fontSize: 13),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx),
+                  child: const Text('إلغاء', style: TextStyle(color: Colors.white54, fontFamily: 'Cairo')),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00D2FF),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                  ),
+                  onPressed: () {
+                    if (newClientCtrl.text.trim().isNotEmpty) {
+                      setState(() {
+                        dest.clientCtrl.text = newClientCtrl.text.trim();
+                      });
+                      Navigator.pop(dialogCtx);
+                      Navigator.pop(sheetContext);
+                    }
+                  },
+                  child: const Text('حفظ (OK)', style: TextStyle(color: Color(0xFF103667), fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+        }
+    );
+  }
+
+  void _showClientSelectionSheet(BuildContext context, DestinationRecord dest) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        String searchQuery = '';
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            var filteredClients = _existingClientsFromDb.where((c) => c.contains(searchQuery)).toList();
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              decoration: const BoxDecoration(
+                color: Color(0xFF0A2540),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+              ),
+              padding: const EdgeInsets.only(top: 10, left: 16, right: 16),
+              child: Column(
+                children: [
+                  Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(10))),
+                  const SizedBox(height: 20),
+                  const Text('ابحث واختر العميل', style: TextStyle(color: Colors.white, fontFamily: 'Cairo', fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 15),
+                  TextField(
+                    onChanged: (val) => setModalState(() => searchQuery = val),
+                    style: const TextStyle(color: Colors.white, fontFamily: 'Cairo'),
+                    decoration: InputDecoration(
+                      hintText: 'ابحث باسم العميل...',
+                      hintStyle: const TextStyle(color: Colors.white54, fontFamily: 'Cairo'),
+                      prefixIcon: const Icon(Icons.search, color: Color(0xFF00D2FF)),
+                      filled: true,
+                      fillColor: Colors.black26,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        ...filteredClients.map((clientName) => Card(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          child: ListTile(
+                            leading: const Icon(Icons.business, color: Color(0xFF00D2FF)),
+                            title: Text(clientName, style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15)),
+                            onTap: () {
+                              setState(() {
+                                dest.clientCtrl.text = clientName;
+                              });
+                              FocusScope.of(context).unfocus();
+                              Navigator.pop(context);
+                            },
+                          ),
+                        )),
+
+                        Card(
+                          color: Colors.orange.withValues(alpha: 0.1),
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 20, top: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.orange.withValues(alpha: 0.5), width: 1.5)),
+                          child: ListTile(
+                            leading: const Icon(Icons.add_business, color: Colors.orange),
+                            title: const Text('إضافة عميل جديد', style: TextStyle(color: Colors.orange, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15)),
+                            onTap: () {
+                              _showAddNewClientDialog(context, dest);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -455,7 +563,6 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
         builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFF00D2FF))),
       );
 
-      // 3️⃣ حفظ الصورة كدليل
       String uploadedImageUrl = '';
       if (_selectedImage != null) {
         try {
@@ -472,23 +579,26 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
       CollectionReference entriesRef = FirebaseFirestore.instance.collection('daily_entries');
       CollectionReference clientsRef = FirebaseFirestore.instance.collection('clients');
       CollectionReference clientAccountsRef = FirebaseFirestore.instance.collection('client_accounts');
+      CollectionReference clientTransactionsRef = FirebaseFirestore.instance.collection('client_transactions');
       CollectionReference vehiclesRef = FirebaseFirestore.instance.collection('vehicles');
 
-      String formattedDate = '${_selectedDate.year}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.day.toString().padLeft(2, '0')}';
+      // 🔥 حل مشكلة السجل الفاضي: استخدام صيغة التاريخ المطابقة للشاشة اليدوية (بالشرطة بدل السلاش) 🔥
+      String formattedDate = '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
 
       for (var driverRec in _driverRecords) {
         if (driverRec.driverCtrl.text.trim().isEmpty) continue;
 
         String engCubage = driverRec.cubageCtrl.text.replaceAll('٠', '0').replaceAll('١', '1').replaceAll('٢', '2').replaceAll('٣', '3').replaceAll('٤', '4').replaceAll('٥', '5').replaceAll('٦', '6').replaceAll('٧', '7').replaceAll('٨', '8').replaceAll('٩', '9');
-        double totalCubage = double.tryParse(engCubage) ?? 0.0;
 
-        // التسجيل التلقائي للمعدات الجديدة
+        // 🔥 حل مشكلة التكعيبات: ده تكعيب المعدة (في النقلة الواحدة) 🔥
+        double singleVehicleCubage = double.tryParse(engCubage) ?? 0.0;
+
         if (!_allCarNumbers.contains(driverRec.carNumberCtrl.text) && driverRec.carNumberCtrl.text.isNotEmpty) {
           DocumentReference newVehicleDoc = vehiclesRef.doc();
           batch.set(newVehicleDoc, {
             'name': driverRec.driverCtrl.text.trim(),
             'number': driverRec.carNumberCtrl.text.trim(),
-            'cubage': totalCubage,
+            'cubage': singleVehicleCubage,
             'typeCode': 'M',
             'createdAt': FieldValue.serverTimestamp(),
           });
@@ -496,16 +606,14 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
         }
 
         List<Map<String, dynamic>> clientsTripsList = [];
-        int totalTripsCount = 0;
+        double totalCubageForDriver = 0.0;
 
         for (var dest in driverRec.destinations) {
           String engTrips = dest.tripsCtrl.text.replaceAll('٠', '0').replaceAll('١', '1').replaceAll('٢', '2');
           int trips = int.tryParse(engTrips) ?? 1;
           String clientName = dest.clientCtrl.text.trim();
-          totalTripsCount += trips;
 
           if (clientName.isNotEmpty) {
-            // التسجيل التلقائي للعملاء الجدد
             if (!_existingClientsFromDb.contains(clientName)) {
               DocumentReference newClientDoc = clientsRef.doc();
               batch.set(newClientDoc, {
@@ -513,37 +621,66 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                 'createdAt': FieldValue.serverTimestamp(),
               });
 
-              DocumentReference newAccountDoc = clientAccountsRef.doc();
+              DocumentReference newAccountDoc = clientAccountsRef.doc(clientName);
               batch.set(newAccountDoc, {
                 'clientName': clientName,
-                'balance': 0,
+                'balance': 0.0,
                 'createdAt': FieldValue.serverTimestamp(),
               });
               _existingClientsFromDb.add(clientName);
             }
+
+            // 💰 التصحيح الجذري للعمليات الحسابية 💰
+            double tripsCubageForClient = trips * singleVehicleCubage; // النقلات × سعة المعدة
+            totalCubageForDriver += tripsCubageForClient; // تجميع إجمالي السائق
+            double financialValue = tripsCubageForClient * _defaultClientPrice; // حساب الفلوس
+
+            // تحديث رصيد العميل
+            DocumentReference clientAccountRef = clientAccountsRef.doc(clientName);
+            batch.set(clientAccountRef, {
+              'clientName': clientName,
+              'balance': FieldValue.increment(financialValue),
+              'lastUpdate': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+
+            // تسجيل الحركة في كشف الحساب
+            DocumentReference transactionDoc = clientTransactionsRef.doc();
+            batch.set(transactionDoc, {
+              'clientName': clientName,
+              'dateString': formattedDate, // بالصيغة الموحدة للسجل
+              'timestamp': FieldValue.serverTimestamp(),
+              'driverName': driverRec.driverCtrl.text.trim(),
+              'carNumber': driverRec.carNumberCtrl.text.trim(),
+              'site': _globalSite,
+              'tripsCount': trips,
+              'totalCubage': tripsCubageForClient,
+              'unitPrice': _defaultClientPrice,
+              'totalValue': financialValue,
+              'type': 'debit',
+              'description': 'توريد عدد $trips نقلة',
+            });
+
+            // إضافة البيانات للستة الخاصة باليومية بالتكعيب الصحيح
+            clientsTripsList.add({
+              'clientName': clientName,
+              'tripsCount': trips,
+              'totalCubage': tripsCubageForClient, // كانت بتتحفظ 0.0 في الكود القديم!
+              'clientPriceSnapshot': _defaultClientPrice,
+              'officePriceSnapshot': _defaultOfficePrice,
+            });
           }
-
-          clientsTripsList.add({
-            'clientName': clientName,
-            'tripsCount': trips,
-            'totalCubage': 0.0,
-            'clientPriceSnapshot': _defaultClientPrice,
-            'officePriceSnapshot': _defaultOfficePrice,
-          });
         }
-
-        double singleCubage = totalTripsCount > 0 ? totalCubage / totalTripsCount : totalCubage;
 
         DocumentReference entryDocRef = entriesRef.doc();
         batch.set(entryDocRef, {
-          'site': driverRec.site,
+          'site': _globalSite,
           'driverName': driverRec.driverCtrl.text.trim(),
           'carNumber': driverRec.carNumberCtrl.text.trim(),
-          'dateString': formattedDate,
+          'dateString': formattedDate, // بالصيغة الموحدة للسجل
           'timestamp': FieldValue.serverTimestamp(),
           'clientsTrips': clientsTripsList,
-          'cubage': singleCubage,
-          'totalCubage': totalCubage,
+          'cubage': singleVehicleCubage, // سعة المعدة
+          'totalCubage': totalCubageForDriver, // إجمالي التكعيب الفعلي
           'auditImageUrl': uploadedImageUrl,
           'isAiGenerated': true,
         });
@@ -557,7 +694,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✅ تم ترحيل اليومية والمعدات والعملاء بنجاح!', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+          content: Text('✅ تم ترحيل اليومية والتسميع في الحسابات بنجاح!', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
           backgroundColor: Color(0xFF28A745),
         ),
       );
@@ -602,15 +739,51 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
             ),
           ],
         ),
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20.0),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20.0, 10.0, 20.0, 20.0),
+          child: Align(
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 650),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 15),
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.location_on, color: Color(0xFF00D2FF)),
+                        const SizedBox(width: 10),
+                        const Text('الموقع:', style: TextStyle(color: Colors.white70, fontFamily: 'Cairo', fontSize: 14, fontWeight: FontWeight.bold)),
+                        const Spacer(),
+                        ChoiceChip(
+                            label: const Text('القديم', style: TextStyle(fontSize: 12, fontFamily: 'Cairo')),
+                            selected: _globalSite == 'old',
+                            selectedColor: const Color(0xFF00D2FF),
+                            backgroundColor: Colors.black26,
+                            labelStyle: TextStyle(color: _globalSite == 'old' ? const Color(0xFF103667) : Colors.white, fontWeight: FontWeight.bold),
+                            onSelected: (val) => setState(() => _globalSite = 'old')
+                        ),
+                        const SizedBox(width: 10),
+                        ChoiceChip(
+                            label: const Text('الجديد', style: TextStyle(fontSize: 12, fontFamily: 'Cairo')),
+                            selected: _globalSite == 'new',
+                            selectedColor: const Color(0xFF00D2FF),
+                            backgroundColor: Colors.black26,
+                            labelStyle: TextStyle(color: _globalSite == 'new' ? const Color(0xFF103667) : Colors.white, fontWeight: FontWeight.bold),
+                            onSelected: (val) => setState(() => _globalSite = 'new')
+                        ),
+                      ],
+                    ),
+                  ),
+
                   Container(
                     margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
@@ -621,7 +794,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.calendar_today, color: Color(0xFF00D2FF)),
                       title: const Text('تاريخ البيان:', style: TextStyle(color: Colors.white70, fontFamily: 'Cairo', fontSize: 14)),
-                      subtitle: Text('${_selectedDate.year}/${_selectedDate.month}/${_selectedDate.day}', style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16)),
+                      subtitle: Text('${_selectedDate.day} - ${_selectedDate.month} - ${_selectedDate.year}', style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 16)),
                       trailing: const Icon(Icons.edit, color: Colors.white54, size: 20),
                       onTap: () => _selectDate(context),
                     ),
@@ -694,17 +867,6 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                             children: [
                               Row(
                                 children: [
-                                  ChoiceChip(label: const Text('القديم', style: TextStyle(fontSize: 11, fontFamily: 'Cairo')), selected: driverRec.site == 'old', selectedColor: const Color(0xFF00D2FF), backgroundColor: Colors.black26, labelStyle: TextStyle(color: driverRec.site == 'old' ? const Color(0xFF103667) : Colors.white), onSelected: (val) => setState(() => driverRec.site = 'old'), visualDensity: VisualDensity.compact),
-                                  const SizedBox(width: 6),
-                                  ChoiceChip(label: const Text('الجديد', style: TextStyle(fontSize: 11, fontFamily: 'Cairo')), selected: driverRec.site == 'new', selectedColor: const Color(0xFF00D2FF), backgroundColor: Colors.black26, labelStyle: TextStyle(color: driverRec.site == 'new' ? const Color(0xFF103667) : Colors.white), onSelected: (val) => setState(() => driverRec.site = 'new'), visualDensity: VisualDensity.compact),
-                                  const Spacer(),
-                                  IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => setState(() => _driverRecords.removeAt(index))),
-                                ],
-                              ),
-                              const Divider(color: Colors.white24),
-
-                              Row(
-                                children: [
                                   CircleAvatar(backgroundColor: const Color(0xFF00D2FF), radius: 14, child: Text('${index + 1}', style: const TextStyle(color: Color(0xFF103667), fontSize: 12, fontWeight: FontWeight.bold))),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -714,11 +876,13 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                       decoration: const InputDecoration(labelText: 'اسم السائق', labelStyle: TextStyle(color: Colors.white54, fontSize: 11), isDense: true, border: InputBorder.none),
                                     ),
                                   ),
+                                  IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => setState(() => _driverRecords.removeAt(index))),
                                 ],
                               ),
                               const SizedBox(height: 8),
 
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
                                     flex: 2,
@@ -727,6 +891,9 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                       children: [
                                         TextField(
                                           controller: driverRec.carNumberCtrl,
+                                          readOnly: true,
+                                          onTap: () => _showVehicleSelectionSheet(context, driverRec),
+                                          textAlign: TextAlign.center,
                                           style: const TextStyle(color: Color(0xFF00D2FF), fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                                           decoration: InputDecoration(
                                             labelText: 'رقم العربية',
@@ -735,14 +902,14 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                             fillColor: Colors.black12,
                                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                                             isDense: true,
-                                            suffixIcon: IconButton(icon: const Icon(Icons.search, color: Color(0xFF00D2FF)), onPressed: () => _showVehicleSelectionSheet(context, driverRec)),
+                                            contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                                            suffixIcon: const Icon(Icons.search, color: Color(0xFF00D2FF), size: 20),
                                           ),
-                                          onChanged: (v) => setState((){}),
                                         ),
                                         if (isNewVehicle)
                                           Padding(
                                             padding: const EdgeInsets.only(top: 4),
-                                            child: Text('🆕 سيتم إدراج معدة جديدة', style: TextStyle(color: Colors.orangeAccent.shade200, fontSize: 10, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                            child: Text('🆕 سيتم إدراج مركبة جديدة', style: TextStyle(color: Colors.orangeAccent.shade200, fontSize: 10, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
                                           )
                                       ],
                                     ),
@@ -753,6 +920,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                     child: TextField(
                                       controller: driverRec.cubageCtrl,
                                       keyboardType: TextInputType.number,
+                                      textAlign: TextAlign.center,
                                       style: TextStyle(color: isCubageHigh ? Colors.redAccent : Colors.greenAccent, fontFamily: 'Cairo', fontWeight: FontWeight.bold),
                                       decoration: InputDecoration(
                                         labelText: 'التكعيب (م³)',
@@ -761,6 +929,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                         fillColor: isCubageHigh ? Colors.red.withValues(alpha: 0.1) : Colors.black12,
                                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: isCubageHigh ? const BorderSide(color: Colors.redAccent) : BorderSide.none),
                                         isDense: true,
+                                        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
                                       ),
                                       onChanged: (v) => setState((){}),
                                     ),
@@ -777,31 +946,50 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                 itemCount: driverRec.destinations.length,
                                 itemBuilder: (context, destIndex) {
                                   final dest = driverRec.destinations[destIndex];
-                                  bool isNewClient = !_existingClientsFromDb.contains(dest.clientCtrl.text) && dest.clientCtrl.text.isNotEmpty;
+                                  bool isNewClient = !_existingClientsFromDb.contains(dest.clientCtrl.text.trim()) && dest.clientCtrl.text.trim().isNotEmpty;
                                   bool isTripsHigh = (int.tryParse(dest.tripsCtrl.text) ?? 0) > 10;
 
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 6),
                                     child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
                                           flex: 3,
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Autocomplete<String>(
-                                                optionsBuilder: (TextEditingValue v) => v.text.isEmpty ? _existingClientsFromDb : _existingClientsFromDb.where((opt) => opt.contains(v.text)),
-                                                onSelected: (String sel) { dest.clientCtrl.text = sel; setState((){}); },
-                                                fieldViewBuilder: (ctx, ctrl, node, onSub) {
-                                                  if (ctrl.text.isEmpty && dest.clientCtrl.text.isNotEmpty) ctrl.text = dest.clientCtrl.text;
-                                                  ctrl.addListener(() { dest.clientCtrl.text = ctrl.text; setState((){}); });
-                                                  return TextField(controller: ctrl, focusNode: node, style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'Cairo'), decoration: InputDecoration(hintText: 'اسم العميل', filled: true, fillColor: Colors.white.withValues(alpha: 0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide.none), isDense: true));
-                                                },
+                                              TextField(
+                                                controller: dest.clientCtrl,
+                                                readOnly: true,
+                                                onTap: () => _showClientSelectionSheet(context, dest),
+                                                style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'Cairo'),
+                                                decoration: InputDecoration(
+                                                  hintText: 'اسم العميل',
+                                                  filled: true,
+                                                  fillColor: Colors.white.withValues(alpha: 0.05),
+                                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide.none),
+                                                  isDense: true,
+                                                  suffixIcon: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      if (dest.clientCtrl.text.isNotEmpty)
+                                                        IconButton(
+                                                          icon: const Icon(Icons.clear, size: 16, color: Colors.white54),
+                                                          onPressed: () { dest.clientCtrl.clear(); setState((){}); },
+                                                        ),
+                                                      IconButton(
+                                                        icon: const Icon(Icons.search, size: 16, color: Color(0xFF00D2FF)),
+                                                        onPressed: () => _showClientSelectionSheet(context, dest),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
                                               ),
                                               if (isNewClient)
                                                 Padding(
                                                   padding: const EdgeInsets.only(top: 2),
-                                                  child: Text('🆕 سيتم إدراج عميل وفتح حساب له', style: TextStyle(color: Colors.orangeAccent.shade200, fontSize: 9, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+                                                  child: Text('🆕 سيتم إضافة عميل جديد', style: TextStyle(color: Colors.orangeAccent.shade200, fontSize: 10, fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
                                                 )
                                             ],
                                           ),
@@ -812,6 +1000,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                           child: TextField(
                                             controller: dest.tripsCtrl,
                                             keyboardType: TextInputType.number,
+                                            textAlign: TextAlign.center,
                                             style: TextStyle(color: isTripsHigh ? Colors.redAccent : Colors.white, fontSize: 12, fontFamily: 'Cairo'),
                                             decoration: InputDecoration(
                                               hintText: 'نقلات',
@@ -819,11 +1008,15 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                               fillColor: isTripsHigh ? Colors.red.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
                                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: isTripsHigh ? const BorderSide(color: Colors.redAccent) : BorderSide.none),
                                               isDense: true,
+                                              contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
                                             ),
                                             onChanged: (v) => setState((){}),
                                           ),
                                         ),
-                                        IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 18), onPressed: () => setState(() => driverRec.destinations.removeAt(destIndex))),
+                                        IconButton(
+                                            icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
+                                            onPressed: () => setState(() => driverRec.destinations.removeAt(destIndex))
+                                        ),
                                       ],
                                     ),
                                   );
@@ -833,7 +1026,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                               TextButton.icon(
                                 onPressed: () => setState(() => driverRec.destinations.add(DestinationRecord(client: '', trips: '1'))),
                                 icon: const Icon(Icons.add, size: 16, color: Color(0xFF00D2FF)),
-                                label: const Text('إضافة عميل لهذا السائق', style: TextStyle(color: Color(0xFF00D2FF), fontSize: 11, fontFamily: 'Cairo')),
+                                label: const Text('إضافة عميل آخر', style: TextStyle(color: Color(0xFF00D2FF), fontSize: 11, fontFamily: 'Cairo')),
                               ),
                             ],
                           ),
@@ -844,7 +1037,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                     ElevatedButton.icon(
                       onPressed: _submitAiEntry,
                       icon: const Icon(Icons.cloud_upload, color: Colors.white),
-                      label: Text('اعتماد وترحيل بيانات ${_driverRecords.length} معدة', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                      label: Text('اعتماد وترحيل بيانات ${_driverRecords.length} معدة مالياً', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF28A745), minimumSize: const Size(double.infinity, 52), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                     ),
                     const SizedBox(height: 20),
