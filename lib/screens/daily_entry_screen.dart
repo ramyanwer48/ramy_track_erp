@@ -38,46 +38,11 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   ];
   final List<String> _newSiteClients = ['بخيت', 'عادل'];
 
-  final Map<String, double> _oldGlobalsDefaults = {
-    'سعر سائقين الشركة': 40.0,
-    'اللودر': 15.0,
-    'سعر م٣ خصم الجودة': 60.0,
-  };
-  final Map<String, double> _newGlobalsDefaults = {
-    'سعر سائقين الشركة': 34.0,
-    'اللودر': 15.0,
-    'سعر م٣ خصم الجودة': 60.0,
-    'نسبة الشيخ محمد ابو حسين في الجرارات': 22.0,
-    'حساب المكتب عربيات (بعربيات الشركة)': 28.0,
-    'حساب المكتب عربيات (بعربيات المكتب)': 64.0,
-    'حساب المكتب في الجرارات': 53.0,
-  };
-
-  final Map<String, Map<String, double>> _oldClientsDefaults = {
-    'أحمد سعد': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
-    'الأقصي': {'سعر العميل': 125.0, 'سعر المكتب': 115.0},
-    'الرجاء (3)': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
-    'العماد': {'سعر العميل': 110.0, 'سعر المكتب': 100.0},
-    'شركة السلام': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
-    'جنيدي': {'سعر العميل': 125.0, 'سعر المكتب': 115.0},
-    'شركة طلعت مصطفي': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
-    'شركة مصر التشييد والبناء': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
-    'شركة الغريب': {'سعر العميل': 126.0, 'سعر المكتب': 115.0},
-    'محمود صابر': {'سعر العميل': 120.0, 'سعر المكتب': 110.0},
-    'معتمد': {'سعر العميل': 115.0, 'سعر المكتب': 105.0},
-    'وطنية المدرسة': {'سعر العميل': 125.0, 'سعر المكتب': 110.0},
-    'شركة الغريب (بون رسمي)': {'سعر العميل': 140.0, 'سعر المكتب': 0.0},
-    'سامكريت (خط المواسير)': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
-    'الرجاء (1-2)': {'سعر العميل': 95.0, 'سعر المكتب': 0.0},
-    'خلاطة مصر التشييد والبناء': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
-    'خلاطة أبراج': {'سعر العميل': 100.0, 'سعر المكتب': 0.0},
-    'خلاطة السلام': {'سعر العميل': 105.0, 'سعر المكتب': 0.0},
-  };
-
-  final Map<String, Map<String, double>> _newClientsDefaults = {
-    'بخيت': {'عربيات': 70.0, 'جرارات': 100.0},
-    'عادل': {'عربيات': 70.0, 'جرارات': 100.0},
-  };
+  double _clientPriceOldTruck = 0.0;
+  double _clientPriceOldTractor = 0.0;
+  double _clientPriceNewTruck = 0.0;
+  double _clientPriceNewTractor = 0.0;
+  double _defaultOfficePrice = 0.0;
 
   String? _selectedVehicleNumber;
   String _driverName = '---';
@@ -90,12 +55,33 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   void initState() {
     super.initState();
     _listenToVehicles();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchDatabaseData(showMessages: false);
+    });
   }
 
   @override
   void dispose() {
     _vehiclesSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _fetchDatabaseData({bool showMessages = true}) async {
+    try {
+      var settingsSnap = await FirebaseFirestore.instance.collection('settings').doc('prices').get();
+      if(settingsSnap.exists && mounted) {
+        var data = settingsSnap.data()!;
+        setState(() {
+          _clientPriceOldTruck = (data['clientPriceOldTruck'] ?? 100.0).toDouble();
+          _clientPriceOldTractor = (data['clientPriceOldTractor'] ?? 120.0).toDouble();
+          _clientPriceNewTruck = (data['clientPriceNewTruck'] ?? 100.0).toDouble();
+          _clientPriceNewTractor = (data['clientPriceNewTractor'] ?? 120.0).toDouble();
+          _defaultOfficePrice = (data['defaultOfficePrice'] ?? 10.0).toDouble();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching prices: $e');
+    }
   }
 
   Future<bool> checkUnsavedChangesInternal() async {
@@ -189,6 +175,16 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         .replaceAll('آ', 'ا')
         .replaceAll('ة', 'ه')
         .replaceAll('ى', 'ي')
+        .replaceAll('٠', '0')
+        .replaceAll('١', '1')
+        .replaceAll('٢', '2')
+        .replaceAll('٣', '3')
+        .replaceAll('٤', '4')
+        .replaceAll('٥', '5')
+        .replaceAll('٦', '6')
+        .replaceAll('٧', '7')
+        .replaceAll('٨', '8')
+        .replaceAll('٩', '9')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim()
         .toLowerCase();
@@ -280,8 +276,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       _driverName = vehicle['name'].toString();
       _cubage = double.tryParse(vehicle['cubage'].toString()) ?? 0.0;
       _typeCode = vehicle['typeCode'].toString();
-
-      // 🔥 قراءة النوع من الحقل الجديد vehicleType 🔥
       _isTractor = vehicle['vehicleType'] == 'tractor';
 
       if (_typeCode == 'Z') {
@@ -314,7 +308,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
   }
 
   String _formatCubage(double val) {
-    String result = val == 0.0 ? '0' : (val % 1 == 0 ? val.toInt().toString() : val.toString());
+    String result = val == 0.0 ? '0' : val.toInt().toString();
     return _toArabicNumbers(result);
   }
 
@@ -370,6 +364,50 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     });
   }
 
+  Future<void> _rollbackSingleEntry(String docId) async {
+    DocumentSnapshot entryDoc = await FirebaseFirestore.instance.collection('daily_entries').doc(docId).get();
+
+    if (entryDoc.exists) {
+      Map<String, dynamic> entryData = entryDoc.data() as Map<String, dynamic>;
+      String driverName = entryData['driverName']?.toString() ?? '';
+      String dateString = entryData['dateString']?.toString() ?? '';
+      List<dynamic> clientsTrips = entryData['clientsTrips'] ?? [];
+
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      for (var clientTrip in clientsTrips) {
+        String clientName = clientTrip['clientName']?.toString() ?? clientTrip['client']?.toString() ?? '';
+        if (clientName.isEmpty) continue;
+
+        double cubageVal = double.tryParse(clientTrip['totalCubage']?.toString() ?? '0') ?? 0.0;
+        double priceSnap = double.tryParse(clientTrip['clientPriceSnapshot']?.toString() ?? '0') ?? 0.0;
+        double financialValueToDeduct = cubageVal * priceSnap;
+
+        if (financialValueToDeduct > 0) {
+          DocumentReference accountRef = FirebaseFirestore.instance.collection('client_accounts').doc(clientName);
+          batch.set(accountRef, {
+            'balance': FieldValue.increment(-financialValueToDeduct),
+            'lastUpdate': FieldValue.serverTimestamp()
+          }, SetOptions(merge: true));
+        }
+
+        QuerySnapshot transSnap = await FirebaseFirestore.instance
+            .collection('client_transactions')
+            .where('clientName', isEqualTo: clientName)
+            .where('driverName', isEqualTo: driverName)
+            .where('dateString', isEqualTo: dateString)
+            .get();
+
+        for (var doc in transSnap.docs) {
+          batch.delete(doc.reference);
+        }
+      }
+
+      batch.delete(entryDoc.reference);
+      await batch.commit();
+    }
+  }
+
   Future<bool> _saveEntry() async {
     if (_selectedVehicleNumber == null) {
       _showMessage(_isArabic ? 'برجاء اختيار المركبة أولاً' : 'Select vehicle first', Colors.red.shade700);
@@ -385,168 +423,90 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     }
 
     try {
-      String globalsDoc = _selectedSite == 'old' ? 'old_site_globals' : 'new_site_globals';
-      String clientsDoc = _selectedSite == 'old' ? 'old_site_clients' : 'new_site_clients';
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52))),
+      );
 
-      var globalsSnap = await FirebaseFirestore.instance.collection('settings').doc(globalsDoc).get();
-      var clientsSnap = await FirebaseFirestore.instance.collection('settings').doc(clientsDoc).get();
-
-      Map<String, dynamic> globalsData = globalsSnap.exists && globalsSnap.data() != null ? globalsSnap.data()! : {};
-      Map<String, dynamic> clientsData = clientsSnap.exists && clientsSnap.data() != null ? clientsSnap.data()! : {};
-
-      bool hasZeroPrice = false;
-
-      double getGlobalValue(String key, bool isOldSite) {
-        if (globalsData.containsKey(key)) {
-          return double.tryParse(globalsData[key].toString()) ?? 0.0;
-        }
-        return (isOldSite ? _oldGlobalsDefaults[key] : _newGlobalsDefaults[key]) ?? 0.0;
+      if (_currentDocId != null) {
+        await _rollbackSingleEntry(_currentDocId!);
+        _currentDocId = null;
       }
 
-      Map<String, dynamic> globalSnapshots = {
-        'companyDriverPrice': getGlobalValue('سعر سائقين الشركة', _selectedSite == 'old'),
-        'loaderPrice': getGlobalValue('اللودر', _selectedSite == 'old'),
-        'qualityDiscount': getGlobalValue('سعر م٣ خصم الجودة', _selectedSite == 'old'),
-      };
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      CollectionReference entriesRef = FirebaseFirestore.instance.collection('daily_entries');
+      CollectionReference clientAccountsRef = FirebaseFirestore.instance.collection('client_accounts');
+      CollectionReference clientTransactionsRef = FirebaseFirestore.instance.collection('client_transactions');
 
-      if (_selectedSite == 'new') {
-        globalSnapshots['sheikhMohamedTractors'] = getGlobalValue('نسبة الشيخ محمد ابو حسين في الجرارات', false);
-        globalSnapshots['officeTrucksCompany'] = getGlobalValue('حساب المكتب عربيات (بعربيات الشركة)', false);
-        globalSnapshots['officeTrucksOffice'] = getGlobalValue('حساب المكتب عربيات (بعربيات المكتب)', false);
-        globalSnapshots['officeTractors'] = getGlobalValue('حساب المكتب في الجرارات', false);
-      }
+      String formattedDateForLog = '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}';
 
-      List<String> clientNamesList = [];
-      List<Map<String, dynamic>> finalTrips = [];
+      double unitPrice = _selectedSite == 'old'
+          ? (_isTractor ? _clientPriceOldTractor : _clientPriceOldTruck)
+          : (_isTractor ? _clientPriceNewTractor : _clientPriceNewTruck);
 
       for (var t in _clientTrips) {
-        String rawName = t['client'].toString().trim();
-        String safeKey = _normalizeArabic(rawName);
+        String clientName = t['client'].toString().trim();
+        String engTrips = _normalizeArabic(t['trips'].toString());
+        int clientTripsCount = int.tryParse(engTrips) ?? 1;
 
-        clientNamesList.add(rawName);
+        if (clientName.isEmpty || clientTripsCount <= 0) continue;
 
-        double clientPrice = 0.0;
-        double officePrice = 0.0;
+        double tripsCubageForClient = clientTripsCount * _cubage;
+        double financialValue = tripsCubageForClient * unitPrice;
 
-        String? matchedDbKey;
-        if (clientsData.isNotEmpty) {
-          if (clientsData.containsKey(safeKey)) {
-            matchedDbKey = safeKey;
-          } else {
-            try {
-              matchedDbKey = clientsData.keys.firstWhere((k) => _normalizeArabic(k) == safeKey);
-            } catch (_) {
-              matchedDbKey = null;
-            }
-          }
-        }
+        DocumentReference accountRef = clientAccountsRef.doc(clientName);
+        batch.set(accountRef, {
+          'clientName': clientName,
+          'balance': FieldValue.increment(financialValue),
+          'lastUpdate': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
 
-        if (matchedDbKey != null) {
-          var cData = clientsData[matchedDbKey] as Map<String, dynamic>;
-          if (_selectedSite == 'old') {
-            clientPrice = double.tryParse(cData['سعر العميل']?.toString() ?? '0') ?? 0.0;
-            officePrice = double.tryParse(cData['سعر المكتب']?.toString() ?? '0') ?? 0.0;
-          } else {
-            clientPrice = _isTractor
-                ? (double.tryParse(cData['جرارات']?.toString() ?? '0') ?? 0.0)
-                : (double.tryParse(cData['عربيات']?.toString() ?? '0') ?? 0.0);
-          }
-        } else {
-          Map<String, Map<String, double>> defaultsMap = _selectedSite == 'old' ? _oldClientsDefaults : _newClientsDefaults;
-          String? matchedDefKey;
-          try {
-            matchedDefKey = defaultsMap.keys.firstWhere((k) => _normalizeArabic(k) == safeKey);
-          } catch (_) {
-            matchedDefKey = null;
-          }
+        DocumentReference transDoc = clientTransactionsRef.doc();
+        batch.set(transDoc, {
+          'clientName': clientName,
+          'dateString': formattedDateForLog,
+          'timestamp': FieldValue.serverTimestamp(),
+          'driverName': _driverName,
+          'carNumber': _normalizeArabic(_selectedVehicleNumber),
+          'site': _selectedSite,
+          'tripsCount': clientTripsCount,
+          'totalCubage': tripsCubageForClient,
+          'unitPrice': unitPrice,
+          'totalValue': financialValue,
+          'type': 'debit',
+          'description': 'توريد عدد $clientTripsCount نقلة (إدخال يدوي)',
+        });
 
-          if (matchedDefKey != null) {
-            var cData = defaultsMap[matchedDefKey]!;
-            if (_selectedSite == 'old') {
-              clientPrice = cData['سعر العميل'] ?? 0.0;
-              officePrice = cData['سعر المكتب'] ?? 0.0;
-            } else {
-              clientPrice = _isTractor ? (cData['جرارات'] ?? 0.0) : (cData['عربيات'] ?? 0.0);
-            }
-          }
-        }
-
-        if (clientPrice == 0.0) {
-          hasZeroPrice = true;
-        }
-
-        int tripsCount = int.tryParse(t['trips'].toString()) ?? 1;
-
-        finalTrips.add({
-          'client': rawName,
-          'clientName': rawName,
-          'trips': tripsCount,
-          'tripsCount': tripsCount,
-          'totalCubage': tripsCount * _cubage,
-          'cubage': tripsCount * _cubage,
-          'clientPriceSnapshot': clientPrice,
-          'officePriceSnapshot': officePrice,
+        DocumentReference entryDocRef = entriesRef.doc();
+        batch.set(entryDocRef, {
+          'site': _selectedSite,
+          'driverName': _driverName,
+          'vehicleNumber': _normalizeArabic(_selectedVehicleNumber),
+          'dateString': formattedDateForLog,
+          'date': Timestamp.fromDate(_selectedDate),
+          'timestamp': FieldValue.serverTimestamp(),
+          'clientNamesList': [clientName],
+          'clientsTrips': [{
+            'clientName': clientName,
+            'tripsCount': clientTripsCount,
+            'totalCubage': tripsCubageForClient,
+            'cubage': _cubage,
+            'clientPriceSnapshot': unitPrice,
+            'officePriceSnapshot': _defaultOfficePrice,
+          }],
+          'cubage': _cubage,
+          'totalCubage': tripsCubageForClient,
+          'isTractor': _isTractor,
+          'typeCode': _typeCode,
+          'isAiGenerated': false,
         });
       }
 
-      String dateStringFormatted = '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}';
-      bool isUpdate = _currentDocId != null;
+      await batch.commit();
 
-      if (!isUpdate) {
-        var existingDocs = await FirebaseFirestore.instance.collection('daily_entries')
-            .where('site', isEqualTo: _selectedSite)
-            .where('dateString', isEqualTo: dateStringFormatted)
-            .where('vehicleNumber', isEqualTo: _selectedVehicleNumber)
-            .get();
-
-        if (existingDocs.docs.isNotEmpty) {
-          isUpdate = true;
-          _currentDocId = existingDocs.docs.first.id;
-          var existingData = existingDocs.docs.first.data();
-          List<dynamic> existingTrips = existingData['clientsTrips'] ?? [];
-
-          for (var newT in finalTrips) {
-            String safeNewClient = _normalizeArabic(newT['clientName']);
-            int matchIndex = existingTrips.indexWhere((t) => _normalizeArabic(t['clientName']) == safeNewClient);
-
-            if (matchIndex >= 0) {
-              existingTrips[matchIndex]['trips'] = (existingTrips[matchIndex]['trips'] ?? 0) + newT['trips'];
-              existingTrips[matchIndex]['tripsCount'] = (existingTrips[matchIndex]['tripsCount'] ?? 0) + newT['tripsCount'];
-              existingTrips[matchIndex]['totalCubage'] = (existingTrips[matchIndex]['totalCubage'] ?? 0.0) + newT['totalCubage'];
-              existingTrips[matchIndex]['cubage'] = (existingTrips[matchIndex]['cubage'] ?? 0.0) + newT['cubage'];
-              existingTrips[matchIndex]['clientPriceSnapshot'] = newT['clientPriceSnapshot'];
-            } else {
-              existingTrips.add(newT);
-            }
-          }
-          finalTrips = List<Map<String, dynamic>>.from(existingTrips);
-          clientNamesList = finalTrips.map((t) => t['clientName'].toString()).toList();
-        }
-      }
-
-      final entryData = {
-        'date': Timestamp.fromDate(_selectedDate),
-        'dateString': dateStringFormatted,
-        'site': _selectedSite,
-        'vehicleNumber': _selectedVehicleNumber,
-        'driverName': _driverName,
-        'typeCode': _typeCode,
-        'cubage': _cubage,
-        'isTractor': _isTractor, // تم الاعتماد على الحقل الجديد
-        'clientNamesList': clientNamesList,
-        'clientsTrips': finalTrips,
-        'snapshotGlobals': globalSnapshots,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      if (!isUpdate) {
-        entryData['createdAt'] = FieldValue.serverTimestamp();
-        DocumentReference docRef = FirebaseFirestore.instance.collection('daily_entries').doc();
-        _currentDocId = docRef.id;
-        await docRef.set(entryData);
-      } else {
-        await FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).update(entryData);
-      }
+      if (!mounted) return false;
+      Navigator.pop(context);
 
       setState(() {
         _currentDocId = null;
@@ -555,17 +515,12 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
         _isReadOnly = false;
       });
 
-      if (!mounted) return false;
-      if (hasZeroPrice) {
-        _showMessage('تم حفظ البيان بنجاح (تنبيه: يوجد عميل مسجل بسعر صفر)', Colors.orange.shade800, isLong: true);
-      } else {
-        _showMessage('تم حفظ البيان بنجاح', const Color(0xFF28A745));
-      }
-
+      _showMessage('تم حفظ البيان وترحيل الحسابات بنجاح', const Color(0xFF28A745));
       return true;
 
     } catch (e) {
       if (!mounted) return false;
+      Navigator.pop(context);
       _showMessage('Error: $e', Colors.red.shade700);
       return false;
     }
@@ -577,10 +532,10 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(_isArabic ? 'تأكيد الحذف' : 'Confirm Delete', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontFamily: 'Cairo')),
-        content: Text(_isArabic ? 'هل أنت متأكد من حذف هذا البيان بالكامل؟' : 'Are you sure you want to delete this entry?', style: const TextStyle(fontFamily: 'Cairo')),
+        content: Text(_isArabic ? 'هل أنت متأكد من حذف هذا البيان وعكس قيوده المالية بالكامل؟' : 'Are you sure you want to delete this entry and its transactions?', style: const TextStyle(fontFamily: 'Cairo')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(_isArabic ? 'إلغاء' : 'Cancel', style: const TextStyle(fontFamily: 'Cairo'))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(_isArabic ? 'حذف' : 'Delete', style: const TextStyle(color: Colors.red, fontFamily: 'Cairo'))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(_isArabic ? 'حذف وعكس القيود' : 'Delete', style: const TextStyle(color: Colors.red, fontFamily: 'Cairo'))),
         ],
       ),
     ) ?? false;
@@ -588,22 +543,31 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     if (!confirm) return;
 
     try {
-      await FirebaseFirestore.instance.collection('daily_entries').doc(_currentDocId).delete();
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52))),
+      );
+
+      await _rollbackSingleEntry(_currentDocId!);
+
+      if (!mounted) return;
+      Navigator.pop(context);
+
       setState(() {
         _currentDocId = null;
         _resetVehicleFieldsOnly();
         _clientTrips.clear();
         _isReadOnly = false;
       });
-      if (!mounted) return;
-      _showMessage(_isArabic ? 'تم حذف البيان بنجاح' : 'Entry Deleted Successfully.', Colors.red.shade700);
+      _showMessage(_isArabic ? 'تم الحذف وعكس القيود المالية بنجاح' : 'Entry Deleted Successfully.', Colors.red.shade700);
     } catch (e) {
       if (!mounted) return;
+      Navigator.pop(context);
       _showMessage('Error: $e', Colors.red.shade700);
     }
   }
 
-  // 🔥 1. الشاشة المنبثقة لاختيار المركبات (بديل الـ Autocomplete) ترتيب الجرارات أولاً 🔥
   void _showVehicleSelectionSheet(BuildContext context) {
     if (_isReadOnly) { _handleReadOnlyTap(); return; }
 
@@ -621,7 +585,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                   v['name'].toString().contains(searchQuery);
             }).toList();
 
-            // 🔥 الذكاء في ترتيب الجرارات فوق 🔥
             filteredVehicles.sort((a, b) {
               bool isATractor = a['vehicleType'] == 'tractor';
               bool isBTractor = b['vehicleType'] == 'tractor';
@@ -700,7 +663,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     );
   }
 
-  // 🔥 2. الشاشة المنبثقة لاختيار العميل (بديل الـ Autocomplete) 🔥
   void _showClientSelectionSheet(BuildContext context, int index) {
     if (_isReadOnly) { _handleReadOnlyTap(); return; }
     final availableClients = _selectedSite == 'old' ? _oldSiteClients : _newSiteClients;
@@ -781,7 +743,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final textDirection = _isArabic ? TextDirection.rtl : TextDirection.ltr;
@@ -820,7 +781,8 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
             icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
             onPressed: () async {
               bool canLeave = await checkUnsavedChangesInternal();
-              if (canLeave && mounted) Navigator.pop(context);
+              if (!canLeave || !mounted) return;
+              Navigator.pop(context);
             },
           ),
           title: Text(
@@ -846,7 +808,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // 🔥 3. تكبير زراير الموقع 🔥
                         Row(
                           children: [
                             Expanded(
@@ -893,7 +854,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        // 🔥 4. تكبير شريط التاريخ والسجل 🔥
                         Row(
                           children: [
                             Expanded(
@@ -958,7 +918,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                       children: [
                         Row(
                           children: [
-                            // 🔥 5. استبدال Autocomplete المركبة بالشاشة المنبثقة 🔥
                             Expanded(
                               flex: 3,
                               child: _buildCompactInput(
@@ -1128,7 +1087,6 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
                                           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
                                           child: Row(
                                             children: [
-                                              // 🔥 6. استبدال Autocomplete العميل بالشاشة المنبثقة 🔥
                                               Expanded(
                                                 flex: 12,
                                                 child: InkWell(
@@ -1320,7 +1278,7 @@ class _DailyEntryScreenState extends State<DailyEntryScreen> {
 }
 
 // ==========================================
-// شاشة "السجل المستقلة" - لم يتم تغييرها
+// 🔥 شاشة "السجل المدمج" بالهندسة والتعديل المباشر 🔥
 // ==========================================
 class DailyRecordsScreen extends StatefulWidget {
   final String selectedSite;
@@ -1345,6 +1303,28 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
       text = text.replaceAll(english[i], arabic[i]);
     }
     return text;
+  }
+
+  String _formatArabicDateString(String dateString) {
+    try {
+      var parts = dateString.split('/');
+      if (parts.length == 3) {
+        String day = _toArabicNumbers(parts[0].padLeft(2, '0'));
+        String month = _toArabicNumbers(parts[1].padLeft(2, '0'));
+        String year = _toArabicNumbers(parts[2]);
+
+        int d = int.tryParse(parts[0]) ?? 1;
+        int m = int.tryParse(parts[1]) ?? 1;
+        int y = int.tryParse(parts[2]) ?? 2026;
+        DateTime dt = DateTime(y, m, d);
+
+        const weekdays = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+        String dayName = weekdays[dt.weekday - 1];
+
+        return '$dayName - $day / $month / $year';
+      }
+    } catch (_) {}
+    return _toArabicNumbers(dateString);
   }
 
   Widget _buildStrictDateText(DateTime date) {
@@ -1387,7 +1367,7 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF0F2A52),
           title: Text(
-            'سجل البيانات (${widget.selectedSite == 'old' ? 'الموقع القديم' : 'الموقع الجديد'})',
+            'سجل اليوميات (${widget.selectedSite == 'old' ? 'القديم' : 'الجديد'})',
             style: const TextStyle(fontFamily: 'Cairo', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
           ),
           centerTitle: true,
@@ -1397,7 +1377,7 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
           ),
         ),
         body: Padding(
-          padding: const EdgeInsets.all(10.0),
+          padding: const EdgeInsets.all(8.0),
           child: Column(
             children: [
               InkWell(
@@ -1409,26 +1389,14 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
                     lastDate: DateTime(2030),
                     cancelText: 'إلغاء',
                     confirmText: 'حفظ',
-                    saveText: 'حفظ',
-                    helpText: 'اختر فترة البحث',
-                    fieldStartHintText: 'تاريخ البداية',
-                    fieldEndHintText: 'تاريخ النهاية',
-                    locale: const Locale('ar', 'EG'),
                     builder: (context, child) {
                       return Theme(
-                        data: ThemeData.light().copyWith(
-                          colorScheme: const ColorScheme.light(primary: Color(0xFF0F2A52)),
-                        ),
-                        child: Directionality(
-                          textDirection: TextDirection.rtl,
-                          child: child!,
-                        ),
+                        data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: Color(0xFF0F2A52))),
+                        child: Directionality(textDirection: TextDirection.rtl, child: child!),
                       );
                     },
                   );
-                  if (picked != null) {
-                    setState(() => _selectedDateRange = picked);
-                  }
+                  if (picked != null) setState(() => _selectedDateRange = picked);
                 },
                 child: Container(
                   width: double.infinity,
@@ -1436,88 +1404,162 @@ class _DailyRecordsScreenState extends State<DailyRecordsScreen> {
                   decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(6)),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    textDirection: TextDirection.rtl,
                     children: [
                       const Icon(Icons.date_range, size: 18, color: Color(0xFF4A78B9)),
                       const SizedBox(width: 8),
-                      const Text('من: ', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
+                      const Text('من: ', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold)),
                       _buildStrictDateText(_selectedDateRange.start),
                       const SizedBox(width: 15),
-                      const Text('إلى: ', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52))),
+                      const Text('إلى: ', style: TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold)),
                       _buildStrictDateText(_selectedDateRange.end),
                     ],
                   ),
                 ),
               ),
-              const Divider(height: 20),
+              const SizedBox(height: 10),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('daily_entries')
                       .where('site', isEqualTo: widget.selectedSite)
                       .snapshots(),
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52)));
-                    }
-
-                    if (snapshot.hasError) {
-                      return const Center(
-                        child: Text(
-                          'حدث خطأ أثناء تحميل البيانات',
-                          style: TextStyle(fontFamily: 'Cairo', color: Colors.red),
-                        ),
-                      );
-                    }
+                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFF0F2A52)));
+                    if (snapshot.hasError) return const Center(child: Text('حدث خطأ', style: TextStyle(fontFamily: 'Cairo', color: Colors.red)));
 
                     final docs = snapshot.data?.docs ?? const [];
-                    if (docs.isEmpty) {
-                      return const Center(child: Text('لا توجد بيانات مسجلة', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)));
-                    }
+                    if (docs.isEmpty) return const Center(child: Text('لا توجد بيانات', style: TextStyle(fontFamily: 'Cairo')));
 
                     var filteredDocs = docs.where((doc) {
                       var data = doc.data() as Map<String, dynamic>;
                       final docDate = _extractEntryDate(data);
                       if (docDate == null) return false;
-
                       DateTime cleanDocDate = DateTime(docDate.year, docDate.month, docDate.day);
                       DateTime cleanStart = DateTime(_selectedDateRange.start.year, _selectedDateRange.start.month, _selectedDateRange.start.day);
                       DateTime cleanEnd = DateTime(_selectedDateRange.end.year, _selectedDateRange.end.month, _selectedDateRange.end.day);
-
                       return cleanDocDate.compareTo(cleanStart) >= 0 && cleanDocDate.compareTo(cleanEnd) <= 0;
                     }).toList();
 
-                    filteredDocs.sort((a, b) {
-                      final aDate = _extractEntryDate(a.data() as Map<String, dynamic>) ?? DateTime(1970);
-                      final bDate = _extractEntryDate(b.data() as Map<String, dynamic>) ?? DateTime(1970);
-                      return bDate.compareTo(aDate);
-                    });
+                    if (filteredDocs.isEmpty) return const Center(child: Text('لا توجد بيانات في الفترة المحددة', style: TextStyle(fontFamily: 'Cairo')));
 
-                    if (filteredDocs.isEmpty) {
-                      return const Center(child: Text('لا توجد بيانات في الفترة المحددة', style: TextStyle(fontFamily: 'Cairo', color: Colors.grey)));
+                    Map<String, List<DocumentSnapshot>> groupedByDate = {};
+                    for (var doc in filteredDocs) {
+                      var data = doc.data() as Map<String, dynamic>;
+                      String dString = data['dateString']?.toString() ?? 'بدون تاريخ';
+                      if (!groupedByDate.containsKey(dString)) groupedByDate[dString] = [];
+                      groupedByDate[dString]!.add(doc);
                     }
 
-                    return ListView.builder(
-                      itemCount: filteredDocs.length,
-                      itemBuilder: (context, index) {
-                        var doc = filteredDocs[index];
-                        var data = doc.data() as Map<String, dynamic>;
+                    List<String> sortedDates = groupedByDate.keys.toList()..sort((a, b) {
+                      var partsA = a.split('/'); var partsB = b.split('/');
+                      if (partsA.length == 3 && partsB.length == 3) {
+                        DateTime dA = DateTime(int.parse(partsA[2]), int.parse(partsA[1]), int.parse(partsA[0]));
+                        DateTime dB = DateTime(int.parse(partsB[2]), int.parse(partsB[1]), int.parse(partsB[0]));
+                        return dB.compareTo(dA);
+                      }
+                      return 0;
+                    });
 
-                        String vNumber = _toArabicNumbers(data['vehicleNumber']?.toString() ?? '');
-                        String dString = _toArabicNumbers(data['dateString']?.toString() ?? '');
-                        String tripsCount = _toArabicNumbers((data['clientsTrips']?.length ?? 0).toString());
+                    return ListView.builder(
+                      itemCount: sortedDates.length,
+                      itemBuilder: (context, index) {
+                        String dateTitle = sortedDates[index];
+                        List<DocumentSnapshot> dayDocs = groupedByDate[dateTitle]!;
+
+                        dayDocs.sort((a, b) {
+                          var dataA = a.data() as Map<String, dynamic>;
+                          var dataB = b.data() as Map<String, dynamic>;
+
+                          List<dynamic> tripsA = dataA['clientsTrips'] ?? [];
+                          String clientA = tripsA.isNotEmpty ? (tripsA[0]['clientName']?.toString() ?? '') : '';
+
+                          List<dynamic> tripsB = dataB['clientsTrips'] ?? [];
+                          String clientB = tripsB.isNotEmpty ? (tripsB[0]['clientName']?.toString() ?? '') : '';
+
+                          if (clientA == 'بخيت' && clientB != 'بخيت') return -1;
+                          if (clientB == 'بخيت' && clientA != 'بخيت') return 1;
+                          if (clientA == 'عادل' && clientB != 'عادل') return -1;
+                          if (clientB == 'عادل' && clientA != 'عادل') return 1;
+
+                          bool isTractorA = dataA['isTractor'] == true;
+                          bool isTractorB = dataB['isTractor'] == true;
+                          if (isTractorA && !isTractorB) return -1;
+                          if (!isTractorA && isTractorB) return 1;
+
+                          return 0;
+                        });
+
+                        String formattedArabicDateTitle = _formatArabicDateString(dateTitle);
 
                         return Card(
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          elevation: 2,
-                          child: ListTile(
-                            leading: Icon(data['isTractor'] == true ? Icons.local_shipping : Icons.airport_shuttle, color: const Color(0xFF4A78B9)),
-                            title: Text('مركبة: $vNumber ($dString)', style: const TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)),
-                            subtitle: Text('السائق: ${data['driverName']} - $tripsCount عملاء', style: const TextStyle(fontFamily: 'Cairo', fontSize: 11)),
-                            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                            onTap: () {
-                              widget.onLoadEntry(doc);
-                              Navigator.pop(context);
-                            },
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 3,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Container(
+                                decoration: const BoxDecoration(color: Color(0xFF0F2A52), borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: Center(
+                                  child: Text('يومية: $formattedArabicDateTitle', style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14)),
+                                ),
+                              ),
+                              Container(
+                                color: Colors.grey.shade200,
+                                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                                child: const Row(
+                                  children: [
+                                    Expanded(flex: 3, child: Text('السائق', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                                    Expanded(flex: 3, child: Text('العربية', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                                    Expanded(flex: 2, child: Text('م٣', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                                    Expanded(flex: 3, child: Text('العميل', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                                    Expanded(flex: 2, child: Text('نقلات', style: TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                                  ],
+                                ),
+                              ),
+                              ...dayDocs.map((doc) {
+                                var data = doc.data() as Map<String, dynamic>;
+
+                                String driver = data['driverName']?.toString() ?? '';
+                                String vehicle = _toArabicNumbers(data['vehicleNumber']?.toString() ?? '');
+                                double cubageVal = double.tryParse((data['cubage'] ?? 0).toString()) ?? 0.0;
+                                String cubage = _toArabicNumbers(cubageVal.toInt().toString());
+
+                                List<dynamic> trips = data['clientsTrips'] ?? [];
+                                String client = trips.isNotEmpty ? (trips[0]['clientName']?.toString() ?? '') : '';
+                                String tripsCount = _toArabicNumbers(trips.isNotEmpty ? (trips[0]['tripsCount']?.toString() ?? '0') : '0');
+
+                                Color rowColor = Colors.transparent;
+                                if (client == 'بخيت') {
+                                  rowColor = const Color(0xFFE3F2FD);
+                                } else if (client == 'عادل') {
+                                  rowColor = const Color(0xFFE8F5E9);
+                                }
+
+                                return InkWell(
+                                  onTap: () {
+                                    widget.onLoadEntry(doc);
+                                    Navigator.pop(context);
+                                  },
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                        color: rowColor,
+                                        border: Border(bottom: BorderSide(color: Colors.grey.shade300))
+                                    ),
+                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                    child: Row(
+                                      children: [
+                                        Expanded(flex: 3, child: Text(driver, style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.black87), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis)),
+                                        Expanded(flex: 3, child: Text(vehicle, style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF4A78B9)), textAlign: TextAlign.center)),
+                                        Expanded(flex: 2, child: Text(cubage, style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.black87), textAlign: TextAlign.center)),
+                                        Expanded(flex: 3, child: Text(client, style: const TextStyle(fontFamily: 'Cairo', fontSize: 11, color: Colors.black87), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis)),
+                                        Expanded(flex: 2, child: Text(tripsCount, style: const TextStyle(fontFamily: 'Cairo', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF28A745)), textAlign: TextAlign.center)),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ],
                           ),
                         );
                       },

@@ -27,7 +27,8 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
   late TabController _tabController;
   final List<String> _paymentMethods = ['كاش', 'فودافون كاش', 'إنستاباي', 'تحويل بنكي', 'شيك بنكي'];
   final List<String> _newSystemClients = ['بخيت', 'عادل'];
-  double _currentNetRemaining = 0.0; // متغير عشان نحتفظ بقيمة المديونية ونفحصها وقت الحذف
+  double _currentNetRemaining = 0.0;
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +71,29 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
     return _toArabicNumbers(result);
   }
 
+  DateTime? _parseRawDate(Map<String, dynamic> item) {
+    try {
+      if (item['timestamp'] != null && item['timestamp'] is Timestamp) {
+        return (item['timestamp'] as Timestamp).toDate();
+      }
+      if (item['date'] != null && item['date'] is Timestamp) {
+        return (item['date'] as Timestamp).toDate();
+      }
+      String rawDate = item['dateString'] ?? item['tripDate'] ?? '';
+      if (rawDate.isNotEmpty) {
+        var parts = rawDate.split(RegExp(r'[-/]'));
+        if (parts.length == 3) {
+          int p0 = int.tryParse(parts[0]) ?? 0;
+          int p1 = int.tryParse(parts[1]) ?? 0;
+          int p2 = int.tryParse(parts[2]) ?? 0;
+          if (p0 > 1000) return DateTime(p0, p1, p2);
+          if (p2 > 1000) return DateTime(p2, p1, p0);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   String _extractAndFormatDate(Map<String, dynamic> item) {
     try {
       String rawDate = item['dateString'] ?? item['date'] ?? item['tripDate'] ?? '';
@@ -97,6 +121,13 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       }
     } catch (_) {}
     return 'بدون تاريخ';
+  }
+
+  bool _isTripTractor(Map<String, dynamic> trip) {
+    if (trip['isTractor'] == true) return true;
+    String detailsStr = '${trip['vehicleNumber'] ?? ''} ${trip['carType'] ?? ''} ${trip['type'] ?? ''}'.toLowerCase();
+    if (detailsStr.contains('جرار') || detailsStr.contains('tractor')) return true;
+    return false;
   }
 
   String _formatNumber(double amount) {
@@ -292,7 +323,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       for (var trip in trips) {
         String date = _extractAndFormatDate(trip);
         String driver = trip['driverName'] ?? trip['driver'] ?? 'غير محدد';
-        bool isTractor = trip['isTractor'] == true || '${trip['vehicleNumber']} ${trip['carType']}'.toLowerCase().contains('جرار');
+        bool isTractor = _isTripTractor(trip);
         String vehicleType = isTractor ? 'جرار' : 'عربية';
         String carNo = trip['vehicleNumber'] ?? trip['carNumber'] ?? '';
 
@@ -350,7 +381,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       for (var trip in trips) {
         String date = _extractAndFormatDate(trip);
         String driver = trip['driverName'] ?? trip['driver'] ?? 'غير محدد';
-        bool isTractor = trip['isTractor'] == true || '${trip['vehicleNumber']} ${trip['carType']}'.toLowerCase().contains('جرار');
+        bool isTractor = _isTripTractor(trip);
         String vehicleType = isTractor ? 'جرار' : 'عربية';
         String carNo = trip['vehicleNumber'] ?? trip['carNumber'] ?? '';
         int count = int.tryParse(trip['tripsCount']?.toString() ?? '1') ?? 1;
@@ -442,9 +473,8 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       ),
     );
   }
-// ================= دالة حذف العميل =================
+
   Future<void> _deleteClient() async {
-    // 1. خط الدفاع الأول: منع الحذف لو عليه فلوس
     if (_currentNetRemaining > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -456,7 +486,6 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       return;
     }
 
-    // 2. رسالة تأكيد أخيرة
     bool? confirm = await showDialog(
       context: context,
       builder: (ctx) => Directionality(
@@ -483,7 +512,6 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       ),
     );
 
-    // 3. التنفيذ الفعلي والرجوع للشاشة السابقة
     if (confirm == true) {
       try {
         var snapshot = await FirebaseFirestore.instance.collection('clients').where('name', isEqualTo: widget.clientName.trim()).get();
@@ -491,7 +519,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
           await doc.reference.delete();
         }
         if (mounted) {
-          Navigator.pop(context); // قفل شاشة التفاصيل والرجوع للشاشة الرئيسية
+          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('تم حذف العميل بنجاح', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)), backgroundColor: Colors.green),
           );
@@ -503,6 +531,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
       }
     }
   }
+
   @override
   Widget build(BuildContext context) {
     String clientCleanName = widget.clientName.trim();
@@ -586,7 +615,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
         body: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('settings').snapshots(),
             builder: (context, settingsSnapshot) {
-              double clientSpecificPrice = 115.0; // السعر الافتراضي القديم
+              double clientSpecificPrice = 115.0;
               double truckPrice = 70.0;
               double tractorPrice = 100.0;
 
@@ -594,7 +623,6 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                 for (var doc in settingsSnapshot.data!.docs) {
                   var data = doc.data() as Map<String, dynamic>;
 
-                  // لو العميل تبع الموقع القديم، هات سعره الموحد
                   if (doc.id == 'old_site_clients') {
                     for (var entry in data.entries) {
                       if (_normalizeArabic(entry.key) == targetNorm) {
@@ -603,7 +631,6 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                     }
                   }
 
-                  // لو العميل تبع الموقع الجديد، هات سعر العربيات والجرارات
                   if (doc.id == 'new_site_clients') {
                     for (var entry in data.entries) {
                       if (_normalizeArabic(entry.key) == targetNorm) {
@@ -644,16 +671,7 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                     clientTrips.add(combinedTrip);
 
                                     double cubage = double.tryParse(tripItem['totalCubage']?.toString() ?? tripItem['cubage']?.toString() ?? '0') ?? 0.0;
-
-                                    bool isTractor = false;
-                                    if (data['isTractor'] == true || tripItem['isTractor'] == true) {
-                                      isTractor = true;
-                                    } else {
-                                      String detailsStr = '${data['vehicleNumber'] ?? ''} ${data['carType'] ?? ''} ${data['type'] ?? ''}'.toLowerCase();
-                                      if (detailsStr.contains('جرار') || detailsStr.contains('tractor')) {
-                                        isTractor = true;
-                                      }
-                                    }
+                                    bool isTractor = _isTripTractor(combinedTrip);
 
                                     if (isNewSystem) {
                                       if (isTractor) {
@@ -670,7 +688,33 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                             }
                           }
 
-                          // حساب المستحقات: الشركات القديمة تأخذ سعرها المخصص من الإعدادات، والجديدة تفصل عربيات وجرارات
+                          // 🔥 الفرز الذكي (بالتاريخ التنازلي، ثم الجرارات أولاً) 🔥
+                          clientTrips.sort((a, b) {
+                            DateTime dateA = _parseRawDate(a) ?? DateTime(1970);
+                            DateTime dateB = _parseRawDate(b) ?? DateTime(1970);
+                            int dateComp = dateB.compareTo(dateA);
+                            if (dateComp != 0) return dateComp;
+
+                            bool isTractorA = _isTripTractor(a);
+                            bool isTractorB = _isTripTractor(b);
+                            if (isTractorA && !isTractorB) return -1;
+                            if (!isTractorA && isTractorB) return 1;
+
+                            return 0;
+                          });
+
+                          // تجهيز القائمة بالهيدر بتاع الأيام
+                          List<dynamic> displayList = [];
+                          String currentDateStr = '';
+                          for (var trip in clientTrips) {
+                            String dStr = _extractAndFormatDate(trip);
+                            if (dStr != currentDateStr) {
+                              displayList.add(dStr);
+                              currentDateStr = dStr;
+                            }
+                            displayList.add(trip);
+                          }
+
                           double newWorkValue = isNewSystem
                               ? (totalTruckMeters * truckPrice) + (totalTractorMeters * tractorPrice)
                               : (totalOldMeters * clientSpecificPrice);
@@ -687,7 +731,8 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                           }
 
                           double netRemaining = newWorkValue - totalPayments;
-                          _currentNetRemaining = netRemaining; // تحديث مستمر لقيمة المديونية
+                          _currentNetRemaining = netRemaining;
+
                           return Column(
                             children: [
                               Container(
@@ -835,32 +880,42 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                           ),
                                         ),
                                         Expanded(
-                                          child: clientTrips.isEmpty
+                                          child: displayList.isEmpty
                                               ? _buildEmptyState(Icons.local_shipping_outlined, 'لم يتم تسجيل أي نقلات بعد')
                                               : ListView.builder(
-                                            key: ValueKey(clientTrips.length),
+                                            key: ValueKey(displayList.length),
                                             padding: const EdgeInsets.all(8),
-                                            itemCount: clientTrips.length,
+                                            itemCount: displayList.length,
                                             itemBuilder: (context, index) {
-                                              var trip = clientTrips[index];
-                                              String formattedDate = _extractAndFormatDate(trip);
+                                              var item = displayList[index];
 
+                                              // عرض فاصل اليومية المميز
+                                              if (item is String) {
+                                                return Container(
+                                                    margin: const EdgeInsets.only(top: 12, bottom: 6),
+                                                    padding: const EdgeInsets.symmetric(vertical: 6),
+                                                    decoration: BoxDecoration(
+                                                        color: const Color(0xFF0F2A52),
+                                                        borderRadius: BorderRadius.circular(6)
+                                                    ),
+                                                    child: Center(
+                                                        child: Text(
+                                                            'يومية: $item',
+                                                            style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 13)
+                                                        )
+                                                    )
+                                                );
+                                              }
+
+                                              // عرض بيانات الكارت من غير التاريخ
+                                              var trip = item as Map<String, dynamic>;
                                               String driver = trip['driverName'] ?? trip['driver'] ?? 'غير محدد';
                                               String carNo = trip['vehicleNumber'] ?? trip['carNumber'] ?? 'بدون رقم';
                                               String tripsCount = trip['tripsCount']?.toString() ?? trip['trips']?.toString() ?? '1';
                                               String cubage = trip['cubage']?.toString() ?? '0';
                                               String totalCubage = trip['totalCubage']?.toString() ?? cubage;
 
-                                              bool isTractor = false;
-                                              if (trip['isTractor'] == true) {
-                                                isTractor = true;
-                                              } else {
-                                                String detailsStr = '${trip['vehicleNumber'] ?? ''} ${trip['carType'] ?? ''} ${trip['type'] ?? ''}'.toLowerCase();
-                                                if (detailsStr.contains('جرار') || detailsStr.contains('tractor')) {
-                                                  isTractor = true;
-                                                }
-                                              }
-
+                                              bool isTractor = _isTripTractor(trip);
                                               String vehicleTypeLabel = isTractor ? 'جرار' : 'عربية';
                                               Color cardColor = isTractor ? Colors.orange.shade50 : Colors.blue.shade50;
                                               Color borderColor = isTractor ? Colors.orange.shade300 : Colors.blue.shade300;
@@ -881,8 +936,8 @@ class _ClientDetailsScreenState extends State<ClientDetailsScreen> with SingleTi
                                                           fit: BoxFit.scaleDown,
                                                           alignment: Alignment.centerRight,
                                                           child: Text(
-                                                            '$formattedDate  |  $driver  |  $vehicleTypeLabel ${_toArabicNumbers(carNo)}  |  نقلات: ${_toArabicNumbers(tripsCount)}  |  تكعيب: ${_toArabicNumbers(cubage)}  |  الإجمالي: ${_toArabicNumbers(totalCubage)}م³',
-                                                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
+                                                            '$driver  |  $vehicleTypeLabel ${_toArabicNumbers(carNo)}  |  نقلات: ${_toArabicNumbers(tripsCount)}  |  تكعيب: ${_toArabicNumbers(cubage)}  |  الإجمالي: ${_toArabicNumbers(totalCubage)}م³',
+                                                            style: const TextStyle(fontFamily: 'Cairo', fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0F2A52)),
                                                           ),
                                                         ),
                                                       ),

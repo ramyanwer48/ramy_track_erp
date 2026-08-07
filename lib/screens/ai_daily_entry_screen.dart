@@ -6,7 +6,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
-
+import '../secrets.dart'; // تأكد من مسار الملف حسب مكان شاشتك
 // 🧠 فلتر سحري لتوحيد الأرقام
 String _normalizeNumberForMatch(String input) {
   const arabic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -108,7 +108,6 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   List<Map<String, dynamic>> _vehiclesFromDb = [];
   List<String> _allCarNumbers = [];
 
-  // 🔥 مصفوفة الأسعار الجديدة لفصل الجرار عن العربية والموقع القديم عن الجديد 🔥
   double _clientPriceOldTruck = 0.0;
   double _clientPriceOldTractor = 0.0;
   double _clientPriceNewTruck = 0.0;
@@ -117,13 +116,14 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
 
   final ImagePicker _picker = ImagePicker();
 
-  // ⚠️ حط مفتاح جوجل الجديد هنا ⚠️
-  final String geminiApiKey = '';
+
 
   @override
   void initState() {
     super.initState();
-    _fetchDatabaseData(showMessages: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchDatabaseData(showMessages: false);
+    });
   }
 
   Future<void> _fetchDatabaseData({bool showMessages = true}) async {
@@ -137,7 +137,6 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
       var clientsSnap = await FirebaseFirestore.instance.collection('clients').get();
       var vehiclesSnap = await FirebaseFirestore.instance.collection('vehicles').get();
 
-      // 🔥 جلب أسعار العملاء المفصلة من الفايربيز 🔥
       var settingsSnap = await FirebaseFirestore.instance.collection('settings').doc('prices').get();
       if(settingsSnap.exists) {
         var data = settingsSnap.data()!;
@@ -199,6 +198,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -227,6 +227,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     try {
       final XFile? image = await _picker.pickImage(
         source: source,
@@ -281,6 +282,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   }
 
   Future<void> _analyzeImageWithAI() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     if (_selectedImage == null) return;
 
     if (_vehiclesFromDb.isEmpty) {
@@ -299,21 +301,19 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
       أنت محاسب محترف لنظام ERP محاجر في مصر. حلل هذه الصورة لجدول يومية نقل بخط اليد.
       فك الاختصارات (مثل: خ = خلاطة، ش = شارع).
       
-      ⚠️ تعليمات هامة جداً لأسماء العملاء:
-      يجب استخراج "الاسم الصافي" للعميل فقط. إذا وجدت كلمات مثل (شغل تبع، تبع، لحساب، لـ) قبل الاسم (مثال: "شغل تبع بخيت" أو "تبع عادل" أو "لبخيت")، قم بإزالة هذه الكلمات الزائدة وأرجع الاسم الأساسي فقط (وهو "بخيت" أو "عادل").
+      ⚠️ تعليمات محاسبية صارمة جداً:
+      1. أسماء العملاء: استخرج "الاسم الصافي" فقط. احذف الكلمات الزائدة مثل (شغل تبع، تبع، لحساب، لـ).
+      2. دمج السائقين (عدم التكرار): لا تكرر اسم السائق أبداً. إذا كان السائق له أكثر من عميل، ضعهم في مصفوفة destinations واحدة.
+      3. تقسيم النقلات: إذا كان مكتوب أمام السائق عدة عملاء ومكتوب إجمالي نقلات، **يجب تقسيم النقلات عليهم بالتساوي**.
 
-      لكل سائق، استخرج:
-      - اسم السائق بوضوح.
-      - رقم العربية أو الجرار (استخرج كل الأرقام المكتوبة قدر الإمكان).
-      - اسم العميل الصافي (بدون كلمات زائدة) وعدد النقلات لكل جهة.
-      
       أرجع النتيجة بصيغة JSON Array فقط وبدون أي نصوص إضافية بهذا الشكل تماماً:
       [
         {
           "driverName": "اسم السائق",
           "carNumber": "رقم العربية",
           "destinations": [
-            {"clientName": "اسم العميل", "tripsCount": 2}
+            {"clientName": "اسم العميل الأول", "tripsCount": 1},
+            {"clientName": "اسم العميل الثاني", "tripsCount": 1}
           ]
         }
       ]
@@ -466,7 +466,10 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(dialogCtx),
+                  onPressed: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    Navigator.pop(dialogCtx);
+                  },
                   child: const Text('إلغاء', style: TextStyle(color: Colors.white54, fontFamily: 'Cairo')),
                 ),
                 ElevatedButton(
@@ -475,6 +478,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
                   ),
                   onPressed: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
                     if (newDriverCtrl.text.trim().isNotEmpty) {
                       setState(() {
                         driverRec.driverCtrl.text = newDriverCtrl.text.trim();
@@ -493,6 +497,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   }
 
   void _showDriverSelectionSheet(BuildContext context, DriverEntryRecord driverRec) {
+    FocusManager.instance.primaryFocus?.unfocus();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -542,10 +547,10 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                             leading: const Icon(Icons.person, color: Color(0xFF00D2FF)),
                             title: Text(driverName, style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15)),
                             onTap: () {
+                              FocusManager.instance.primaryFocus?.unfocus();
                               setState(() {
                                 driverRec.driverCtrl.text = driverName;
                               });
-                              FocusScope.of(context).unfocus();
                               Navigator.pop(context);
                             },
                           ),
@@ -601,7 +606,10 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(dialogCtx),
+                  onPressed: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    Navigator.pop(dialogCtx);
+                  },
                   child: const Text('إلغاء', style: TextStyle(color: Colors.white54, fontFamily: 'Cairo')),
                 ),
                 ElevatedButton(
@@ -610,6 +618,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
                   ),
                   onPressed: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
                     if (newCubageCtrl.text.trim().isNotEmpty) {
                       setState(() {
                         driverRec.cubageCtrl.text = _formatCubageValue(newCubageCtrl.text.trim());
@@ -628,6 +637,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   }
 
   void _showCubageSelectionSheet(BuildContext context, DriverEntryRecord driverRec) {
+    FocusManager.instance.primaryFocus?.unfocus();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -679,10 +689,10 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                             leading: const Icon(Icons.view_in_ar, color: Color(0xFF00D2FF)),
                             title: Text(cubageVal, style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15)),
                             onTap: () {
+                              FocusManager.instance.primaryFocus?.unfocus();
                               setState(() {
                                 driverRec.cubageCtrl.text = cubageVal;
                               });
-                              FocusScope.of(context).unfocus();
                               Navigator.pop(context);
                             },
                           ),
@@ -714,6 +724,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   }
 
   void _showVehicleSelectionSheet(BuildContext context, DriverEntryRecord driverRec) {
+    FocusManager.instance.primaryFocus?.unfocus();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -785,6 +796,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                             subtitle: Text('رقم: ${vehicle['number']}  |  تكعيب: ${_formatCubageValue(vehicle['cubage'].toString())}', style: const TextStyle(color: Colors.white70, fontFamily: 'Cairo')),
                             trailing: Text(isTractorItem ? 'جرار' : 'عربية', style: TextStyle(color: isTractorItem ? Colors.orangeAccent : const Color(0xFF00D2FF), fontFamily: 'Cairo', fontSize: 11, fontWeight: FontWeight.bold)),
                             onTap: () {
+                              FocusManager.instance.primaryFocus?.unfocus();
                               setState(() {
                                 driverRec.carNumberCtrl.text = vehicle['number'].toString();
                                 driverRec.cubageCtrl.text = _formatCubageValue(vehicle['cubage'].toString());
@@ -792,7 +804,6 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                                 driverRec.isTractor = isTractorItem;
                                 driverRec.typeCode = vehicle['typeCode'].toString();
                               });
-                              FocusScope.of(context).unfocus();
                               Navigator.pop(context);
                             },
                           ),
@@ -833,7 +844,10 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(dialogCtx),
+                  onPressed: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    Navigator.pop(dialogCtx);
+                  },
                   child: const Text('إلغاء', style: TextStyle(color: Colors.white54, fontFamily: 'Cairo')),
                 ),
                 ElevatedButton(
@@ -842,6 +856,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
                   ),
                   onPressed: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
                     if (newClientCtrl.text.trim().isNotEmpty) {
                       setState(() {
                         dest.clientCtrl.text = newClientCtrl.text.trim();
@@ -860,6 +875,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
   }
 
   void _showClientSelectionSheet(BuildContext context, DestinationRecord dest) {
+    FocusManager.instance.primaryFocus?.unfocus();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -908,10 +924,10 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
                             leading: const Icon(Icons.business, color: Color(0xFF00D2FF)),
                             title: Text(clientName, style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 15)),
                             onTap: () {
+                              FocusManager.instance.primaryFocus?.unfocus();
                               setState(() {
                                 dest.clientCtrl.text = clientName;
                               });
-                              FocusScope.of(context).unfocus();
                               Navigator.pop(context);
                             },
                           ),
@@ -942,7 +958,9 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
     );
   }
 
+  // 🔥 دالة الترحيل بالتفكيك الكامل (عزل صارم للمستندات) 🔥
   Future<void> _submitAiEntry() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     if (_driverRecords.isEmpty) return;
 
     try {
@@ -979,7 +997,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
         String engCubage = driverRec.cubageCtrl.text.replaceAll('٠', '0').replaceAll('١', '1').replaceAll('٢', '2').replaceAll('٣', '3').replaceAll('٤', '4').replaceAll('٥', '5').replaceAll('٦', '6').replaceAll('٧', '7').replaceAll('٨', '8').replaceAll('٩', '9');
         double singleVehicleCubage = double.tryParse(engCubage) ?? 0.0;
 
-        // 🔥 تحديد السعر الصحيح للعميل بناءً على الموقع (قديم/جديد) ونوع المعدة (عربية/جرار) 🔥
+        // السعر ثابت للمعدة والموقع
         double currentClientPrice = 0.0;
         if (_globalSite == 'old') {
           currentClientPrice = driverRec.isTractor ? _clientPriceOldTractor : _clientPriceOldTruck;
@@ -1000,17 +1018,14 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
           _allCarNumbers.add(driverRec.carNumberCtrl.text);
         }
 
-        List<Map<String, dynamic>> clientsTripsList = [];
-        List<String> clientNamesList = [];
-        double totalCubageForDriver = 0.0;
-
+        // 🔥 التعديل الجذري: إنشاء مستند (بيان) منفصل بالكامل لكل جهة/عميل 🔥
         for (var dest in driverRec.destinations) {
-          String engTrips = dest.tripsCtrl.text.replaceAll('٠', '0').replaceAll('١', '1').replaceAll('٢', '2');
-          int trips = int.tryParse(engTrips) ?? 1;
+          String engTrips = dest.tripsCtrl.text.replaceAll('٠', '0').replaceAll('١', '1').replaceAll('٢', '2').replaceAll('٣', '3').replaceAll('٤', '4').replaceAll('٥', '5').replaceAll('٦', '6').replaceAll('٧', '7').replaceAll('٨', '8').replaceAll('٩', '9');
+          int clientTrips = int.tryParse(engTrips) ?? 1;
           String clientName = dest.clientCtrl.text.trim();
 
           if (clientName.isNotEmpty) {
-            clientNamesList.add(clientName);
+
             if (!_existingClientsFromDb.contains(clientName)) {
               DocumentReference newClientDoc = clientsRef.doc();
               batch.set(newClientDoc, {
@@ -1027,12 +1042,11 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
               _existingClientsFromDb.add(clientName);
             }
 
-            double tripsCubageForClient = trips * singleVehicleCubage;
-            totalCubageForDriver += tripsCubageForClient;
-
-            // 🔥 ضرب التكعيب في السعر المخصص (اللي تم تحديده فوق) بدل السعر الثابت القديم 🔥
+            // الحسابات الخاصة بهذا العميل فقط
+            double tripsCubageForClient = clientTrips * singleVehicleCubage;
             double financialValue = tripsCubageForClient * currentClientPrice;
 
+            // 1. تحديث رصيد هذا العميل فقط
             DocumentReference clientAccountRef = clientAccountsRef.doc(clientName);
             batch.set(clientAccountRef, {
               'clientName': clientName,
@@ -1040,6 +1054,7 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
               'lastUpdate': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
 
+            // 2. تسجيل قيد مالي لهذا العميل فقط
             DocumentReference transactionDoc = clientTransactionsRef.doc();
             batch.set(transactionDoc, {
               'clientName': clientName,
@@ -1048,53 +1063,52 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
               'driverName': driverRec.driverCtrl.text.trim(),
               'carNumber': driverRec.carNumberCtrl.text.trim(),
               'site': _globalSite,
-              'tripsCount': trips,
+              'tripsCount': clientTrips,
               'totalCubage': tripsCubageForClient,
-              'unitPrice': currentClientPrice, // تسجيل السعر الفعلي المطبق في العملية
+              'unitPrice': currentClientPrice,
               'totalValue': financialValue,
               'type': 'debit',
-              'description': 'توريد عدد $trips نقلة',
+              'description': 'توريد عدد $clientTrips نقلة',
             });
 
-            clientsTripsList.add({
-              'clientName': clientName,
-              'tripsCount': trips,
-              'totalCubage': tripsCubageForClient,
-              'cubage': tripsCubageForClient,
-              'clientPriceSnapshot': currentClientPrice, // تسجيل السعر الفعلي للعميل هنا
-              'officePriceSnapshot': _defaultOfficePrice,
+            // 3. إنشاء "بيان يومية" (Daily Entry) مستقل تماماً في الداتابيز لهذا العميل فقط
+            DocumentReference entryDocRef = entriesRef.doc();
+            batch.set(entryDocRef, {
+              'site': _globalSite,
+              'driverName': driverRec.driverCtrl.text.trim(),
+              'vehicleNumber': driverRec.carNumberCtrl.text.trim(),
+              'dateString': formattedDateForLog,
+              'date': Timestamp.fromDate(_selectedDate),
+              'timestamp': FieldValue.serverTimestamp(),
+              'clientNamesList': [clientName], // العميل ده بس
+              'clientsTrips': [{ // نقلات العميل ده بس
+                'clientName': clientName,
+                'tripsCount': clientTrips,
+                'totalCubage': tripsCubageForClient,
+                'cubage': singleVehicleCubage,
+                'clientPriceSnapshot': currentClientPrice,
+                'officePriceSnapshot': _defaultOfficePrice,
+              }],
+              'cubage': singleVehicleCubage,
+              'totalCubage': tripsCubageForClient, // إجمالي تكعيب هذا العميل فقط
+              'isTractor': driverRec.isTractor,
+              'typeCode': driverRec.typeCode,
+              'auditImageUrl': uploadedImageUrl,
+              'isAiGenerated': true,
             });
           }
         }
-
-        DocumentReference entryDocRef = entriesRef.doc();
-        batch.set(entryDocRef, {
-          'site': _globalSite,
-          'driverName': driverRec.driverCtrl.text.trim(),
-          'vehicleNumber': driverRec.carNumberCtrl.text.trim(),
-          'dateString': formattedDateForLog,
-          'date': Timestamp.fromDate(_selectedDate),
-          'timestamp': FieldValue.serverTimestamp(),
-          'clientNamesList': clientNamesList,
-          'clientsTrips': clientsTripsList,
-          'cubage': singleVehicleCubage,
-          'totalCubage': totalCubageForDriver,
-          'isTractor': driverRec.isTractor,
-          'typeCode': driverRec.typeCode,
-          'auditImageUrl': uploadedImageUrl,
-          'isAiGenerated': true,
-        });
       }
 
       await batch.commit();
 
       if (!mounted) return;
-      Navigator.pop(context); // قفل اللودينج
-      Navigator.pop(context); // رجوع للشاشة السابقة
+      Navigator.pop(context);
+      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✅ تم الاعتماد! تم ترحيل اليومية والمبالغ لحسابات العملاء بنجاح.', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
+          content: Text('✅ تم الاعتماد! تم الترحيل وفصل الحسابات بنجاح.', style: TextStyle(fontFamily: 'Cairo', fontWeight: FontWeight.bold)),
           backgroundColor: Color(0xFF28A745),
         ),
       );
@@ -1128,8 +1142,11 @@ class _AiDailyEntryScreenState extends State<AiDailyEntryScreen> {
             style: TextStyle(color: Colors.white, fontFamily: 'Cairo', fontWeight: FontWeight.bold, fontSize: 14),
           ),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
-            onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+              onPressed: () {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.pop(context);
+              }
           ),
           actions: [
             IconButton(
